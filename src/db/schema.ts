@@ -41,8 +41,32 @@ export const users = pgTable("users", {
   id: id(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
+  /** scrypt — הסיסמה עצמה לא נשמרת לעולם */
+  passwordHash: text("password_hash").notNull(),
+  failedLogins: integer("failed_logins").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+/**
+ * סשנים בצד השרת. בעוגייה נשמר טוקן אקראי; בטבלה נשמר רק ה־hash שלו,
+ * כך שדליפת מסד הנתונים לא מאפשרת להתחבר בשם משתמשים.
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    activeOrganizationId: uuid("active_organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sessions_user").on(t.userId)],
+);
 
 /** משתמש יכול להיות שייך לכמה עסקים (למשל יועץ שמנהל כמה לקוחות) */
 export const memberships = pgTable(

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { addExpenseAction, type FormState } from "@/app/actions";
 import { parseShekels } from "@/lib/domain/money";
 import { splitGross } from "@/lib/domain/vat";
 import { FormError } from "./form-error";
+import { submitKeepingValues } from "./submit";
 
 export function ExpenseForm({
   categories,
@@ -20,10 +21,12 @@ export function ExpenseForm({
   const [gross, setGross] = useState("");
   const [vat, setVat] = useState("");
   const [vatTouched, setVatTouched] = useState(false);
-  // React מאפס את השדות הלא־מבוקרים אחרי שליחה מוצלחת; את המבוקרים מאפסים כאן
+  const formRef = useRef<HTMLFormElement>(null);
+  // אחרי הצלחה מאפסים את הטופס לרישום ההוצאה הבאה; אחרי שגיאה הערכים נשמרים
   const [state, action, pending] = useActionState<FormState, FormData>(async (prev, formData) => {
     const result = await addExpenseAction(prev, formData);
     if (result.ok) {
+      formRef.current?.reset();
       setGross("");
       setVat("");
       setVatTouched(false);
@@ -39,7 +42,7 @@ export function ExpenseForm({
   }
 
   return (
-    <form action={action} className="space-y-4">
+    <form ref={formRef} onSubmit={submitKeepingValues(action)} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label className="label" htmlFor="date">תאריך</label>

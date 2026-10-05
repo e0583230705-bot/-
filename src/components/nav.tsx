@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/expenses", label: "הוצאות" },
   { href: "/vat", label: "דוח מע\"מ" },
   { href: "/calendar", label: "מועדי דיווח" },
+  { href: "/settings", label: "משתמשים והרשאות" },
 ];
 
 export function Nav() {

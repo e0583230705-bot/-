@@ -5,6 +5,7 @@ import { issueDocumentAction, type FormState } from "@/app/actions";
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
 import { formatILS, parseShekels } from "@/lib/domain/money";
 import { FormError } from "./form-error";
+import { submitKeepingValues } from "./submit";
 
 interface Line {
   key: number;
@@ -37,7 +38,7 @@ export function DocumentForm({
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   return (
-    <form action={action} className="space-y-5">
+    <form onSubmit={submitKeepingValues(action)} className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="type">סוג מסמך</label>

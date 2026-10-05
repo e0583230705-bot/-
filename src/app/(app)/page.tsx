@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentOrg } from "@/lib/current-org";
+import { getContext } from "@/lib/auth/dal";
 import { loadLedger } from "@/lib/services/reports";
 import { computeProfitAndLoss, computeVatReport } from "@/lib/domain/reports";
 import { buildTaxCalendar, upcomingDeadlines } from "@/lib/domain/tax-calendar";
@@ -9,7 +9,7 @@ import { periodContaining } from "@/lib/periods";
 import { Stat } from "@/components/stat";
 
 export default async function DashboardPage() {
-  const org = (await getCurrentOrg())!;
+  const { org, can } = await getContext();
   const { profile, income, expenses } = await loadLedger(org.id);
   const today = todayISO();
   const year = Number(today.slice(0, 4));
@@ -97,6 +97,7 @@ export default async function DashboardPage() {
         </ul>
       </section>
 
+      {can("write_books") && (
       <section className="flex flex-wrap gap-3">
         <Link href="/income/new" className="btn">
           הפקת מסמך חדש
@@ -105,6 +106,7 @@ export default async function DashboardPage() {
           רישום הוצאה
         </Link>
       </section>
+      )}
     </div>
   );
 }

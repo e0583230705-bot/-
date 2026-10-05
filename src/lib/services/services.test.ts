@@ -3,18 +3,24 @@ import { createOrganization, ValidationError } from "./organizations";
 import { issueDocument, listDocuments } from "./documents";
 import { addExpense, listCategories } from "./expenses";
 import { profitAndLoss, vatReport } from "./reports";
+import { registerUser } from "./auth";
+
+let n = 0;
+const newUser = () =>
+  registerUser({ email: `user${++n}@example.com`, name: "בודק", password: "correct horse battery" });
 
 const customer = { name: "לקוח בע\"מ", taxId: "515555555", isVatRegistered: true };
 
 describe("services (in-memory Postgres)", () => {
   it("rejects an invalid tax id", async () => {
     await expect(
-      createOrganization({ name: "x", businessType: "osek_murshe", taxId: "123456789" }),
+      createOrganization({ ownerUserId: (await newUser()).id, name: "x", businessType: "osek_murshe", taxId: "123456789" }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("runs a full osek murshe flow", async () => {
     const org = await createOrganization({
+      ownerUserId: (await newUser()).id,
       name: "סטודיו דוגמה",
       businessType: "osek_murshe",
       taxId: "123456782",
@@ -75,6 +81,7 @@ describe("services (in-memory Postgres)", () => {
 
   it("enforces document types per business type and isolates tenants", async () => {
     const patur = await createOrganization({
+      ownerUserId: (await newUser()).id,
       name: "עוסק פטור",
       businessType: "osek_patur",
       taxId: "000000018",
@@ -100,6 +107,7 @@ describe("services (in-memory Postgres)", () => {
     expect(receipt.number).toBe(1);
 
     const other = await createOrganization({
+      ownerUserId: (await newUser()).id,
       name: "עסק אחר",
       businessType: "company",
       taxId: "123456782",

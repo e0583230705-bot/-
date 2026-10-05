@@ -1,19 +1,21 @@
 import Link from "next/link";
-import { getCurrentOrg } from "@/lib/current-org";
+import { getContext } from "@/lib/auth/dal";
 import { listDocuments } from "@/lib/services/documents";
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
 import { formatDate, formatILS } from "@/lib/format";
 
 export default async function IncomePage() {
-  const org = (await getCurrentOrg())!;
+  const { org, can } = await getContext();
   const docs = await listDocuments(org.id);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">הכנסות ומסמכים</h1>
-        <Link href="/income/new" className="btn">
-          מסמך חדש
-        </Link>
+        {can("write_books") && (
+          <Link href="/income/new" className="btn">
+            מסמך חדש
+          </Link>
+        )}
       </div>
       <div className="card overflow-x-auto p-0">
         {docs.length === 0 ? (

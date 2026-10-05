@@ -1,11 +1,11 @@
-import { getCurrentOrg } from "@/lib/current-org";
+import { getContext } from "@/lib/auth/dal";
 import { profileOf } from "@/lib/services/organizations";
 import { buildTaxCalendar } from "@/lib/domain/tax-calendar";
 import type { VatFrequency } from "@/lib/domain/business-types";
 import { formatDate, todayISO } from "@/lib/format";
 
 export default async function CalendarPage() {
-  const org = (await getCurrentOrg())!;
+  const { org } = await getContext();
   const profile = profileOf(org);
   const today = todayISO();
   const year = Number(today.slice(0, 4));

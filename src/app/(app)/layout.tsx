@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Nav } from "@/components/nav";
-import { getCurrentOrg } from "@/lib/current-org";
-import { listOrganizations, profileOf } from "@/lib/services/organizations";
-import { switchOrganizationAction } from "../actions";
+import { getContext } from "@/lib/auth/dal";
+import { profileOf } from "@/lib/services/organizations";
+import { ROLES } from "@/lib/domain/permissions";
+import { logoutAction, switchOrganizationAction } from "../actions";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const org = await getCurrentOrg();
-  if (!org) redirect("/onboarding");
-  const orgs = await listOrganizations();
+  const { user, org, role, orgs } = await getContext();
 
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-4 py-4 md:flex-row md:gap-6 md:py-8">
@@ -17,12 +15,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <div>
             <p className="text-xs text-muted">העסק הפעיל</p>
             <p className="font-bold">{org.name}</p>
-            <p className="text-xs text-muted">{profileOf(org).label}</p>
+            <p className="text-xs text-muted">
+              {profileOf(org).label} · {ROLES[role].label}
+            </p>
           </div>
           {orgs.length > 1 && (
             <form action={switchOrganizationAction} className="flex gap-2">
               <select name="orgId" defaultValue={org.id} className="input" aria-label="החלפת עסק">
-                {orgs.map((o) => (
+                {orgs.map(({ org: o }) => (
                   <option key={o.id} value={o.id}>
                     {o.name}
                   </option>
@@ -35,6 +35,13 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <Link href="/onboarding" className="block text-sm text-brand">
             + הוספת עסק
           </Link>
+          <div className="border-t border-border pt-3 text-sm">
+            <p className="truncate font-medium">{user.name}</p>
+            <p className="truncate text-xs text-muted">{user.email}</p>
+            <form action={logoutAction}>
+              <button className="mt-2 text-xs text-muted hover:text-danger">התנתקות</button>
+            </form>
+          </div>
         </div>
       </aside>
       <main className="min-w-0 flex-1">{children}</main>

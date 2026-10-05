@@ -1,4 +1,4 @@
-import { getCurrentOrg } from "@/lib/current-org";
+import { getContext } from "@/lib/auth/dal";
 import { listCategories, listExpenses } from "@/lib/services/expenses";
 import { profileOf } from "@/lib/services/organizations";
 import { vatRateOn } from "@/lib/domain/vat";
@@ -6,7 +6,7 @@ import { formatDate, formatILS, todayISO } from "@/lib/format";
 import { ExpenseForm } from "@/components/expense-form";
 
 export default async function ExpensesPage() {
-  const org = (await getCurrentOrg())!;
+  const { org, can } = await getContext();
   const profile = profileOf(org);
   const [rows, categories] = await Promise.all([listExpenses(org.id), listCategories(org.id)]);
   const today = todayISO();
@@ -14,6 +14,7 @@ export default async function ExpensesPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">הוצאות</h1>
+      {can("write_books") && (
       <div className="card">
         <ExpenseForm
           categories={categories.map((c) => ({ id: c.id, label: c.label }))}
@@ -22,6 +23,7 @@ export default async function ExpensesPage() {
           today={today}
         />
       </div>
+      )}
       <div className="card overflow-x-auto p-0">
         {rows.length === 0 ? (
           <p className="p-6 text-center text-muted">עדיין לא נרשמו הוצאות.</p>

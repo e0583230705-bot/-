@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentOrg } from "@/lib/current-org";
+import { getContext } from "@/lib/auth/dal";
 import { vatReport } from "@/lib/services/reports";
 import { profileOf } from "@/lib/services/organizations";
 import { reportingPeriods } from "@/lib/domain/tax-calendar";
@@ -7,7 +7,7 @@ import type { VatFrequency } from "@/lib/domain/business-types";
 import { formatILS, todayISO } from "@/lib/format";
 
 export default async function VatPage({ searchParams }: PageProps<"/vat">) {
-  const org = (await getCurrentOrg())!;
+  const { org } = await getContext();
   const profile = profileOf(org);
 
   if (!profile.chargesVat) {

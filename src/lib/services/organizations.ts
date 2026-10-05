@@ -1,11 +1,13 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { BUSINESS_TYPES, type BusinessType, type VatFrequency } from "@/lib/domain/business-types";
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/domain/expense-categories";
 import { isValidIsraeliId } from "@/lib/domain/israeli-id";
 
 export interface NewOrganization {
+  /** המשתמש שפותח את העסק — הופך לבעלים */
+  ownerUserId: string;
   name: string;
   businessType: BusinessType;
   taxId: string;
@@ -17,7 +19,7 @@ export interface NewOrganization {
 
 export class ValidationError extends Error {}
 
-export async function createOrganization(input: NewOrganization) {
+export async function createOrganization({ ownerUserId, ...input }: NewOrganization) {
   const profile = BUSINESS_TYPES[input.businessType];
   if (!profile) throw new ValidationError("סוג עסק לא מוכר");
   if (!isValidIsraeliId(input.taxId)) throw new ValidationError("מספר עוסק / ח.פ. לא תקין");
@@ -31,6 +33,7 @@ export async function createOrganization(input: NewOrganization) {
       .insert(schema.organizations)
       .values({ ...input, vatFrequency })
       .returning();
+    await tx.insert(schema.memberships).values({ organizationId: org.id, userId: ownerUserId, role: "owner" });
     await tx.insert(schema.expenseCategories).values(
       DEFAULT_EXPENSE_CATEGORIES.map((c) => ({
         organizationId: org.id,
@@ -45,7 +48,7 @@ export async function createOrganization(input: NewOrganization) {
       action: "create",
       entity: "organization",
       entityId: org.id,
-      data: input,
+      data: { ...input, by: ownerUserId },
     });
     return org;
   });
@@ -57,10 +60,6 @@ export async function getOrganization(id: string) {
   return org ?? null;
 }
 
-export async function listOrganizations() {
-  const db = await getDb();
-  return db.select().from(schema.organizations).orderBy(asc(schema.organizations.createdAt));
-}
 
 export function profileOf(org: { businessType: string }) {
   return BUSINESS_TYPES[org.businessType as BusinessType];

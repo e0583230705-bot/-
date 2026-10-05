@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { createOrganizationAction, type FormState } from "@/app/actions";
 import { BUSINESS_TYPES, type BusinessType } from "@/lib/domain/business-types";
 import { FormError } from "./form-error";
+import { submitKeepingValues } from "./submit";
 
 export function OnboardingForm() {
   const [state, action, pending] = useActionState<FormState, FormData>(createOrganizationAction, {});
@@ -11,7 +12,7 @@ export function OnboardingForm() {
   const profile = BUSINESS_TYPES[type];
 
   return (
-    <form action={action} className="space-y-5">
+    <form onSubmit={submitKeepingValues(action)} className="space-y-5">
       <fieldset>
         <legend className="label">סוג העסק</legend>
         <div className="grid gap-2 sm:grid-cols-2">

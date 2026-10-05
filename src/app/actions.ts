@@ -1,11 +1,12 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ORG_COOKIE, getCurrentOrg } from "@/lib/current-org";
-import { createOrganization, getOrganization, ValidationError } from "@/lib/services/organizations";
+import { endSession, getContext, requirePermission, requireUser, startSession } from "@/lib/auth/dal";
+import { authenticate, registerUser, setActiveOrganization } from "@/lib/services/auth";
+import { addMember, ForbiddenError, getRole, removeMember } from "@/lib/services/members";
+import { createOrganization, ValidationError } from "@/lib/services/organizations";
 import { issueDocument } from "@/lib/services/documents";
 import { addExpense } from "@/lib/services/expenses";
 import { parseShekels } from "@/lib/domain/money";
@@ -13,7 +14,8 @@ import { parseShekels } from "@/lib/domain/money";
 export type FormState = { error?: string; ok?: boolean };
 
 function errorMessage(e: unknown): FormState {
-  if (e instanceof ValidationError) return { error: e.message };
+  unstable_rethrow(e); // הפניות של Next (למשל לדף ההתחברות) צריכות לעבור הלאה
+  if (e instanceof ValidationError || e instanceof ForbiddenError) return { error: e.message };
   if (e instanceof z.ZodError) return { error: e.issues[0]?.message ?? "קלט לא תקין" };
   console.error(e);
   return { error: "אירעה שגיאה. נסו שוב." };
@@ -40,24 +42,87 @@ const orgSchema = z.object({
   address: z.string().trim().optional(),
 });
 
-export async function createOrganizationAction(_: FormState, formData: FormData): Promise<FormState> {
-  let orgId: string;
+/** מונע הפניה לכתובת חיצונית אחרי התחברות (open redirect) */
+function safeNext(value: FormDataEntryValue | null) {
+  const next = typeof value === "string" ? value : "";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+const signupSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  password: z.string(),
+});
+
+export async function signupAction(_: FormState, formData: FormData): Promise<FormState> {
   try {
-    const input = orgSchema.parse(Object.fromEntries(formData));
-    orgId = (await createOrganization(input)).id;
+    const input = signupSchema.parse(Object.fromEntries(formData));
+    const user = await registerUser(input);
+    await startSession(user.id);
   } catch (e) {
     return errorMessage(e);
   }
-  (await cookies()).set(ORG_COOKIE, orgId, { httpOnly: true, sameSite: "lax", path: "/" });
+  redirect("/onboarding");
+}
+
+export async function loginAction(_: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const user = await authenticate(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
+    await startSession(user.id);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  redirect(safeNext(formData.get("next")));
+}
+
+export async function logoutAction() {
+  await endSession();
+  redirect("/login");
+}
+
+export async function createOrganizationAction(_: FormState, formData: FormData): Promise<FormState> {
+  const session = await requireUser();
+  try {
+    const input = orgSchema.parse(Object.fromEntries(formData));
+    const org = await createOrganization({ ...input, ownerUserId: session.user.id });
+    await setActiveOrganization(session.token, org.id);
+  } catch (e) {
+    return errorMessage(e);
+  }
   redirect("/");
 }
 
 export async function switchOrganizationAction(formData: FormData) {
+  const session = await requireUser();
   const id = String(formData.get("orgId") ?? "");
-  if (await getOrganization(id)) {
-    (await cookies()).set(ORG_COOKIE, id, { httpOnly: true, sameSite: "lax", path: "/" });
+  // מעבר רק לעסק שהמשתמש חבר בו
+  if (await getRole(session.user.id, id)) {
+    await setActiveOrganization(session.token, id);
   }
   revalidatePath("/", "layout");
+}
+
+const memberSchema = z.object({
+  email: z.string().trim().min(1, "חסר אימייל"),
+  role: z.enum(["owner", "accountant", "viewer"]),
+});
+
+export async function addMemberAction(_: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const ctx = await getContext();
+    const input = memberSchema.parse(Object.fromEntries(formData));
+    await addMember(ctx.user.id, ctx.org.id, input.email, input.role);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+export async function removeMemberAction(formData: FormData) {
+  const ctx = await getContext();
+  await removeMember(ctx.user.id, ctx.org.id, String(formData.get("userId") ?? ""));
+  revalidatePath("/settings");
 }
 
 const documentSchema = z.object({
@@ -79,9 +144,8 @@ const documentSchema = z.object({
 });
 
 export async function issueDocumentAction(_: FormState, formData: FormData): Promise<FormState> {
-  const org = await getCurrentOrg();
-  if (!org) return { error: "לא נבחר עסק" };
   try {
+    const { org } = await requirePermission("write_books");
     const descriptions = formData.getAll("lineDescription").map(String);
     const quantities = formData.getAll("lineQuantity").map(String);
     const prices = formData.getAll("linePrice").map(String);
@@ -124,9 +188,8 @@ const expenseSchema = z.object({
 });
 
 export async function addExpenseAction(_: FormState, formData: FormData): Promise<FormState> {
-  const org = await getCurrentOrg();
-  if (!org) return { error: "לא נבחר עסק" };
   try {
+    const { org } = await requirePermission("write_books");
     const input = expenseSchema.parse(Object.fromEntries(formData));
     await addExpense({ organizationId: org.id, ...input });
   } catch (e) {
