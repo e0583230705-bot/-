@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e3e6eb;
+  --text: #16202c;
+  --muted: #5d6b7c;
+  --brand: #0f6e5a;
+  --brand-soft: #e3f2ee;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warn: #9a6200;
+  --warn-soft: #fff5e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141a;
+    --surface: #171e26;
+    --border: #2a333e;
+    --text: #e6ebf0;
+    --muted: #93a1b1;
+    --brand: #4cc2a4;
+    --brand-soft: #173a33;
+    --danger: #f2877d;
+    --danger-soft: #3a1d1b;
+    --warn: #f0b960;
+    --warn-soft: #3a2c12;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-heebo), system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-surface p-5;
+  }
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-muted;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg border border-border px-3 py-2 text-sm hover:bg-bg;
+  }
+  .table {
+    @apply w-full text-sm;
+  }
+  .table th {
+    @apply border-b border-border px-3 py-2 text-start font-medium text-muted;
+  }
+  .table td {
+    @apply border-b border-border px-3 py-2;
+  }
+  .num {
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-variant-numeric: tabular-nums;
+  }
+}
