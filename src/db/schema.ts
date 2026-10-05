@@ -118,6 +118,8 @@ export const documents = pgTable(
     allocationRequired: boolean("allocation_required").notNull().default(false),
     allocationNumber: text("allocation_number"),
     notes: text("notes"),
+    /** מתי הופק ה"מקור". כל הפקה אחריו מסומנת "העתק נאמן למקור" */
+    originalDeliveredAt: timestamp("original_delivered_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

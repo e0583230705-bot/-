@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createOrganization, ValidationError } from "./organizations";
-import { issueDocument, listDocuments } from "./documents";
+import { claimOriginal, getDocument, issueDocument, listDocuments } from "./documents";
 import { addExpense, listCategories } from "./expenses";
 import { profitAndLoss, vatReport } from "./reports";
 import { registerUser } from "./auth";
@@ -77,6 +77,22 @@ describe("services (in-memory Postgres)", () => {
     expect(pl.revenue).toBe(650000);
     expect(pl.recognizedExpenses).toBe(Math.round((50000 + 3000) * 0.45));
     expect(await listDocuments(org.id)).toHaveLength(2);
+
+    // מקור מופק פעם אחת בלבד, ומסמך של עסק אחר לא נגיש
+    const userId = (await newUser()).id;
+    expect(await claimOriginal(org.id, d1.id, userId)).toBe(true);
+    expect(await claimOriginal(org.id, d1.id, userId)).toBe(false);
+    const loaded = await getDocument(org.id, d1.id);
+    expect(loaded?.lines[0].description).toBe("עיצוב לוגו");
+    expect(loaded?.doc.originalDeliveredAt).toBeInstanceOf(Date);
+    const otherOrg = await createOrganization({
+      ownerUserId: userId,
+      name: "אחר",
+      businessType: "company",
+      taxId: "123456782",
+    });
+    expect(await getDocument(otherOrg.id, d1.id)).toBeNull();
+    expect(await claimOriginal(otherOrg.id, d2.id, userId)).toBe(false);
   });
 
   it("enforces document types per business type and isolates tenants", async () => {

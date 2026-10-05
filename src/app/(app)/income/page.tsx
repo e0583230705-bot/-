@@ -36,8 +36,10 @@ export default async function IncomePage() {
               {docs.map((d) => (
                 <tr key={d.id}>
                   <td>
-                    {DOCUMENT_TYPES[d.type as DocumentType].label}{" "}
-                    <span className="num text-muted">#{d.number}</span>
+                    <Link href={`/income/${d.id}`} className="text-brand hover:underline">
+                      {DOCUMENT_TYPES[d.type as DocumentType].label}{" "}
+                      <span className="num">#{d.number}</span>
+                    </Link>
                   </td>
                   <td className="num">{formatDate(d.issueDate)}</td>
                   <td>{d.customerName}</td>

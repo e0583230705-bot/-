@@ -144,6 +144,7 @@ const documentSchema = z.object({
 });
 
 export async function issueDocumentAction(_: FormState, formData: FormData): Promise<FormState> {
+  let issued: { id: string };
   try {
     const { org } = await requirePermission("write_books");
     const descriptions = formData.getAll("lineDescription").map(String);
@@ -157,7 +158,7 @@ export async function issueDocumentAction(_: FormState, formData: FormData): Pro
         unitPrice: prices[i],
       })),
     });
-    await issueDocument({
+    issued = await issueDocument({
       organizationId: org.id,
       type: input.type,
       issueDate: input.issueDate,
@@ -173,7 +174,7 @@ export async function issueDocumentAction(_: FormState, formData: FormData): Pro
     return errorMessage(e);
   }
   revalidatePath("/", "layout");
-  redirect("/income");
+  redirect(`/income/${issued.id}`);
 }
 
 const expenseSchema = z.object({

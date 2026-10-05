@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { DOCUMENT_TYPES, type DocumentType, requiresAllocationNumber } from "@/lib/domain/documents";
 import { addVat, type ISODate, vatRateOn } from "@/lib/domain/vat";
@@ -101,4 +101,49 @@ export async function listDocuments(organizationId: string) {
     .from(schema.documents)
     .where(eq(schema.documents.organizationId, organizationId))
     .orderBy(desc(schema.documents.issueDate), desc(schema.documents.createdAt));
+}
+
+/** מסמך עם השורות שלו — רק אם הוא שייך לעסק המבוקש */
+export async function getDocument(organizationId: string, documentId: string) {
+  const db = await getDb();
+  const [doc] = await db
+    .select()
+    .from(schema.documents)
+    .where(and(eq(schema.documents.id, documentId), eq(schema.documents.organizationId, organizationId)));
+  if (!doc) return null;
+  const lines = await db
+    .select()
+    .from(schema.documentLines)
+    .where(eq(schema.documentLines.documentId, doc.id))
+    .orderBy(asc(schema.documentLines.position));
+  return { doc, lines };
+}
+
+/**
+ * מסמך מופק כ"מקור" פעם אחת בלבד; כל הפקה נוספת היא "העתק נאמן למקור".
+ * העדכון אטומי, כך ששתי בקשות במקביל לא יקבלו שתיהן "מקור".
+ */
+export async function claimOriginal(organizationId: string, documentId: string, userId: string) {
+  const db = await getDb();
+  const claimed = await db
+    .update(schema.documents)
+    .set({ originalDeliveredAt: new Date() })
+    .where(
+      and(
+        eq(schema.documents.id, documentId),
+        eq(schema.documents.organizationId, organizationId),
+        isNull(schema.documents.originalDeliveredAt),
+      ),
+    )
+    .returning({ id: schema.documents.id });
+  if (claimed.length > 0) {
+    await db.insert(schema.auditLog).values({
+      organizationId,
+      action: "deliver_original",
+      entity: "document",
+      entityId: documentId,
+      data: { by: userId },
+    });
+  }
+  return claimed.length > 0;
 }
