@@ -2,7 +2,7 @@ import { getContext } from "@/lib/auth/dal";
 import { listMembers } from "@/lib/services/members";
 import { isRole, ROLES } from "@/lib/domain/permissions";
 import { AddMemberForm } from "@/components/add-member-form";
-import { removeMemberAction } from "../../actions";
+import { removeMemberAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 
 export default async function SettingsPage() {
@@ -14,7 +14,6 @@ export default async function SettingsPage() {
     <div className="space-y-5">
       <PageHeader
         title="משתמשים והרשאות"
-        description="אפשר לתת גישה לרואה חשבון, לשותף או לעובד, כל אחד ברמת ההרשאה שמתאימה לו."
       />
 
       <div className="table-wrap">

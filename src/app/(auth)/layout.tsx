@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/dal";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
-  if (await getSession()) redirect("/");
+  if (await getSession()) redirect("/audit");
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="mb-8 flex items-center gap-3">

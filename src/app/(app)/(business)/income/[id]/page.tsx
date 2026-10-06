@@ -12,7 +12,7 @@ import { listDocumentEmails } from "@/lib/services/documents";
 import { getCustomer } from "@/lib/services/customers";
 import { emailConfigured } from "@/lib/email/send";
 import { SendDocumentForm } from "@/components/send-document-form";
-import { markPaidAction, markUnpaidAction, sendDocumentAction } from "../../../actions";
+import { markPaidAction, markUnpaidAction, sendDocumentAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 
 const PAID_VIA: Record<string, string> = { bank: "לפי תנועת בנק", receipt: "לפי קבלה", manual: "סימון ידני" };

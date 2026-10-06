@@ -40,7 +40,6 @@ export default async function VatPage({ searchParams }: PageProps<"/vat">) {
     <div className="space-y-5">
       <PageHeader
         title="דוח מע״מ"
-        description="המספרים להזנה בדיווח התקופתי באתר רשות המסים, לפי המסמכים וההוצאות שנרשמו."
       />
       <div className="flex flex-wrap items-center gap-2">
         <Link href={`/vat?year=${year - 1}&p=0`} className="btn-ghost btn-sm num">

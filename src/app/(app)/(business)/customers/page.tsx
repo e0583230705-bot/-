@@ -12,7 +12,6 @@ export default async function CustomersPage() {
     <div className="space-y-5">
       <PageHeader
         title="לקוחות"
-        description="כל מי שהופק לו מסמך, עם סך החיובים והמסמך האחרון."
         actions={
           can("write_books") && (
             <Link href="/customers/new" className="btn">

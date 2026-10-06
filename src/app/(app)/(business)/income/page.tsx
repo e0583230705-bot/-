@@ -24,7 +24,6 @@ export default async function IncomePage({ searchParams }: PageProps<"/income">)
     <div className="space-y-5">
       <PageHeader
         title="הכנסות ומסמכים"
-        description="חשבוניות, קבלות וחשבונות עסקה שהופקו ללקוחות. מסמך שהופק לא משתנה; לתיקון מפיקים זיכוי."
         actions={
           can("write_books") && (
             <Link href="/income/new" className="btn">

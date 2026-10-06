@@ -33,7 +33,6 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
     <div className="space-y-6">
       <PageHeader
         title={<>דוח שנתי <span className="num">{year}</span></>}
-        description="סיכום השנה לקראת הדוח השנתי: הכנסות, הוצאות מוכרות ורווח, לפי חודשים ולפי קטגוריות."
         actions={
           <div className="pills">
             <Link href={`/reports?year=${year - 1}`} className="pill num">
@@ -50,9 +49,9 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       />
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <Stat label="הכנסות (לפני מע״מ)" value={formatILS(totals.revenue)} />
-        <Stat label="הוצאות מוכרות" value={formatILS(totals.recognizedExpenses)} />
-        <Stat label="רווח לפני מס" value={formatILS(totals.profit)} tone={totals.profit >= 0 ? "good" : "bad"} />
+        <Stat label="הכנסות (לפני מע״מ)" value={formatILS(totals.revenue)} tone="teal" icon="fileText" />
+        <Stat label="הוצאות מוכרות" value={formatILS(totals.recognizedExpenses)} tone="orange" icon="receipt" />
+        <Stat label="רווח לפני מס" value={formatILS(totals.profit)} tone={totals.profit >= 0 ? "good" : "bad"} icon="chart" />
       </section>
 
       <section className="table-wrap">

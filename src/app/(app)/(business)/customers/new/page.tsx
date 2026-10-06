@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/auth/dal";
 import { CustomerForm } from "@/components/customer-form";
-import { createCustomerAction } from "../../../actions";
+import { createCustomerAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 
 export default async function NewCustomerPage() {

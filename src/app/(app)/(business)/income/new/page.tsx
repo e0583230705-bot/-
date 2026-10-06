@@ -57,7 +57,6 @@ export default async function NewDocumentPage({ searchParams }: PageProps<"/inco
       <PageHeader
         back={{ href: "/income", label: "הכנסות ומסמכים" }}
         title={paymentFor ? "הפקת מסמך תשלום" : "הפקת מסמך"}
-        description={paymentFor ? undefined : "המע״מ והסכומים מחושבים תוך כדי מילוי. אחרי ההפקה המסמך נעול, ולתיקון מפיקים זיכוי."}
       />
       <div className="card max-w-3xl">
         <DocumentForm

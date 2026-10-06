@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getContext } from "@/lib/auth/dal";
 import { getCustomer } from "@/lib/services/customers";
 import { CustomerForm } from "@/components/customer-form";
-import { updateCustomerAction } from "../../../../actions";
+import { updateCustomerAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 
 export default async function EditCustomerPage({ params }: PageProps<"/customers/[id]/edit">) {

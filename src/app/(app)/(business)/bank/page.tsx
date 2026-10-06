@@ -3,7 +3,7 @@ import { getContext } from "@/lib/auth/dal";
 import { bankSummary, listBankTransactions, type BankFilter } from "@/lib/services/bank";
 import { formatDate, formatILS } from "@/lib/format";
 import { BankUploadForm } from "@/components/bank-upload-form";
-import { ignoreTransactionAction, matchTransactionAction } from "../../actions";
+import { ignoreTransactionAction, matchTransactionAction } from "@/app/actions";
 import { Collapsible, EmptyState, PageHeader } from "@/components/page-header";
 
 const STATUS: Record<string, { label: string; className: string }> = {
@@ -25,7 +25,6 @@ export default async function BankPage({ searchParams }: PageProps<"/bank">) {
     <div className="space-y-5">
       <PageHeader
         title="תנועות בנק"
-        description="מייבאים את דף הבנק, והמערכת מציעה לכל תנועה את המסמך או ההוצאה שמתאימים לה."
       />
 
       {write && (

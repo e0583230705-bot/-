@@ -71,7 +71,7 @@ const orgSchema = z.object({
 /** מונע הפניה לכתובת חיצונית אחרי התחברות (open redirect) */
 function safeNext(value: FormDataEntryValue | null) {
   const next = typeof value === "string" ? value : "";
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/audit";
 }
 
 const signupSchema = z.object({
@@ -115,7 +115,7 @@ export async function createOrganizationAction(_: FormState, formData: FormData)
   } catch (e) {
     return errorMessage(e);
   }
-  redirect("/");
+  redirect("/audit");
 }
 
 export async function switchOrganizationAction(formData: FormData) {
@@ -352,7 +352,7 @@ export async function resetPasswordAction(_: FormState, formData: FormData): Pro
   } catch (e) {
     return errorMessage(e);
   }
-  redirect("/");
+  redirect("/audit");
 }
 
 export async function sendDocumentAction(documentId: string, _: FormState, formData: FormData): Promise<FormState> {

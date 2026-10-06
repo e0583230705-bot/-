@@ -24,22 +24,24 @@ import {
   setMaterialityAction,
   setStatementBalanceAction,
   setVatConfigAction,
-} from "../../../actions";
+} from "@/app/actions";
 import { reconcileBank, statementBalanceAt } from "@/lib/domain/ledger/bank-reconciliation";
 import { suggestVatAccounts, vatReasonableness } from "@/lib/domain/ledger/vat-reconciliation";
 import { listBankStatements, type VatConfig } from "@/lib/services/audit";
 import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
 import { listNotes } from "@/lib/services/audit";
-import { Collapsible, PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
+import { Icons } from "@/components/icons";
 
 const TABS = [
-  { key: "tb", label: "מאזן בוחן" },
-  { key: "analytics", label: "סקירה אנליטית" },
-  { key: "recon", label: "התאמות" },
-  { key: "je", label: "פקודות חריגות" },
-  { key: "benford", label: "חוק בנפורד" },
-  { key: "sample", label: "מדגם" },
+  { key: "tb", label: "מאזן בוחן", icon: "chart", tone: "bg-sky-soft text-sky", blurb: "האם סך החובה שווה לסך הזכות" },
+  { key: "je", label: "פקודות חריגות", icon: "alert", tone: "bg-orange-soft text-orange", blurb: "סכומים עגולים, שבת, סוף שנה, מעל המהותיות" },
+  { key: "analytics", label: "סקירה אנליטית", icon: "sparkles", tone: "bg-violet-soft text-violet", blurb: "שינויים מול שנה קודמת וחודשים חריגים" },
+  { key: "recon", label: "התאמות", icon: "bank", tone: "bg-teal-soft text-teal", blurb: "בנק ליום המאזן וסבירות מע״מ" },
+  { key: "benford", label: "חוק בנפורד", icon: "percent", tone: "bg-pink-soft text-pink", blurb: "התפלגות הספרה הראשונה" },
+  { key: "sample", label: "מדגם", icon: "inbox", tone: "bg-amber-soft text-amber", blurb: "פקודות לבדיקה מול אסמכתאות" },
 ] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 export default async function EngagementPage({ params, searchParams }: PageProps<"/audit/[id]">) {
   const { id } = await params;
@@ -48,90 +50,185 @@ export default async function EngagementPage({ params, searchParams }: PageProps
   const data = /^[0-9a-f-]{36}$/i.test(id) ? await loadEngagementLedger(org.id, id) : null;
   if (!data) notFound();
   const { engagement: e, accounts, lines } = data;
-  const tab = TABS.find((t) => t.key === sp.tab)?.key ?? "tb";
+  const tab: TabKey | null = TABS.find((t) => t.key === sp.tab)?.key ?? null;
   const write = can("write_books");
+  const hasBooks = lines.length > 0;
 
   const materiality =
     e.materialityBase && e.materialityPct ? computeMateriality(e.materialityBase, e.materialityPct) : null;
+  const [notes, statements] = await Promise.all([listNotes(org.id, e.id), listBankStatements(org.id, e.id)]);
+
+  // שורת סטטוס קצרה לכל בדיקה, לאריחים בסקירה
+  const status: Record<TabKey, { text: string; tone: "good" | "warn" | "bad" | "muted" }> = {
+    tb: { text: "", tone: "muted" },
+    je: { text: "", tone: "muted" },
+    analytics: { text: "", tone: "muted" },
+    recon: { text: "", tone: "muted" },
+    benford: { text: "", tone: "muted" },
+    sample: { text: "", tone: "muted" },
+  };
+  if (hasBooks) {
+    const tb = trialBalance(accounts, lines);
+    const unbalanced = unbalancedEntries(lines).length;
+    status.tb = tb.balanced && unbalanced === 0 ? { text: "מאוזן", tone: "good" } : { text: `${unbalanced} פקודות לא מאוזנות`, tone: "bad" };
+    const flagged = testJournalEntries(lines, { yearEnd: e.yearEnd, performanceMateriality: materiality?.performance ?? Number.MAX_SAFE_INTEGER }).length;
+    status.je = flagged === 0 ? { text: "לא נמצאו", tone: "good" } : { text: `${flagged} לבדיקה`, tone: "warn" };
+    const b = benford(lines.filter((l) => l.amount > 0).map((l) => l.amount));
+    status.benford = !b.reliable
+      ? { text: "מעט מדי נתונים", tone: "muted" }
+      : { text: CONFORMITY_LABELS[b.conformity], tone: b.conformity === "nonconformity" ? "bad" : b.conformity === "marginal" ? "warn" : "good" };
+    if (!materiality) status.analytics = { text: "צריך מהותיות", tone: "muted" };
+    else if (data.prior.lines.length === 0) status.analytics = { text: "צריך שנה קודמת", tone: "muted" };
+    else {
+      const rows = compareYears(data, data.prior, { performanceMateriality: materiality.performance, by: "account" }).filter((r) => r.flag);
+      const explained = rows.filter((r) => notes.has(`analytics:${r.key}`)).length;
+      status.analytics = rows.length === 0 ? { text: "אין שינויים מהותיים", tone: "good" } : { text: `${explained}/${rows.length} הוסברו`, tone: explained === rows.length ? "good" : "warn" };
+    }
+    status.recon = statements.length === 0 ? { text: "אין דפי בנק", tone: "muted" } : { text: `${statements.length} חשבונות בנק`, tone: "good" };
+    status.sample = materiality ? { text: "מוכן לדגימה", tone: "good" } : { text: "צריך מהותיות", tone: "muted" };
+  }
+  const TONE_BADGE = { good: "badge-good", warn: "badge-warn", bad: "badge-bad", muted: "badge-muted" } as const;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         back={{ href: "/audit", label: "כל התיקים" }}
         title={
           <>
-            {e.clientName} · <span className="num">{e.fiscalYear}</span>
+            {e.clientName} <span className="text-muted">· <span className="num">{e.fiscalYear}</span></span>
           </>
         }
         description={
-          <>
-            {e.clientTaxId && (
-              <>
-                ח.פ. <span className="num">{e.clientTaxId}</span> ·{" "}
-              </>
-            )}
-            {e.sourceFilename ? (
-              <>
-                נקלט מ־<span className="num">{e.sourceFilename}</span> · {lines.length.toLocaleString("he-IL")} שורות
-              </>
+          <span className="flex flex-wrap gap-1.5">
+            {e.clientTaxId && <span className="badge badge-muted num">ח.פ. {e.clientTaxId}</span>}
+            {hasBooks ? (
+              <span className="badge badge-good">
+                <Icons.check size={12} /> {lines.length.toLocaleString("he-IL")} שורות · {e.sourceType === "uniform" ? "מבנה אחיד" : "כרטסת"}
+              </span>
             ) : (
-              "עדיין לא נקלטו נתונים"
+              <span className="badge badge-warn">עוד לא נקלטו ספרים</span>
             )}
-          </>
+            {materiality && (
+              <span className="badge badge-good">
+                <Icons.check size={12} /> מהותיות {formatILS(materiality.overall)}
+              </span>
+            )}
+          </span>
+        }
+        actions={
+          tab && (
+            <Link href={`/audit/${e.id}`} className="btn-ghost btn-sm">
+              לסקירת התיק
+            </Link>
+          )
         }
       />
 
-      <SourcePanel engagement={e} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {write && (
-          <Collapsible
-            title="קליטת ספרי הלקוח"
-            description="מבנה אחיד (BKMVDATA.TXT + INI.TXT) או כרטסת CSV"
-            open={lines.length === 0}
-          >
-            <div className="space-y-3">
-              <p className="text-xs leading-relaxed text-muted">
-                מומלץ: <strong>קובץ במבנה אחיד</strong> — בחרו יחד את BKMVDATA.TXT ו־INI.TXT מספריית OPENFRMT שהופקה
-                בתוכנה של הלקוח. אפשר גם כרטסת הנהלת חשבונות בקובץ CSV. קליטה חוזרת מחליפה את הנתונים.
-              </p>
-              <LedgerImportForm action={importLedgerAction.bind(null, e.id, "current")} label={`קליטת שנת הדוח (${e.fiscalYear})`} />
+      {tab === null && (
+        <>
+          {/* שלב 1+2: ספרים ומהותיות */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className={`card space-y-3 ${hasBooks ? "" : "border-brand/40 bg-brand-soft/30"}`}>
+              <div className="flex items-center gap-3">
+                <span className="bubble bg-brand-soft text-brand font-black">1</span>
+                <div className="flex-1">
+                  <h2 className="card-title">ספרי הלקוח</h2>
+                  <p className="text-xs text-muted">{hasBooks ? "נקלטו. אפשר לקלוט שוב וזה יחליף." : "קובץ במבנה אחיד או כרטסת CSV"}</p>
+                </div>
+                {hasBooks && <Icons.check size={20} className="text-good" />}
+              </div>
+              <SourcePanel engagement={e} />
+              {write && (
+                <details className="panel" open={!hasBooks}>
+                  <summary className="link text-sm">{hasBooks ? "קליטה מחדש" : "איך קולטים?"}</summary>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs leading-relaxed text-muted">
+                      בתוכנת הנהלת החשבונות של הלקוח מפיקים &quot;קובץ במבנה אחיד&quot; (ספריית OPENFRMT) ובוחרים כאן יחד את BKMVDATA.TXT
+                      ו־INI.TXT. אפשר גם כרטסת CSV.
+                    </p>
+                    <LedgerImportForm action={importLedgerAction.bind(null, e.id, "current")} label={`קליטת שנת ${e.fiscalYear}`} />
+                  </div>
+                </details>
+              )}
             </div>
-          </Collapsible>
-        )}
-        <div className="card space-y-3">
-          <h2 className="card-title">מהותיות</h2>
-          {write && (
-            <MaterialityForm
-              action={setMaterialityAction.bind(null, e.id)}
-              initial={{ basis: e.materialityBasis, base: e.materialityBase, pct: e.materialityPct }}
-            />
-          )}
-          {materiality ? (
-            <dl className="grid grid-cols-3 gap-2 text-sm">
-              <div>
-                <dt className="text-muted">כוללת</dt>
-                <dd className="num font-bold">{formatILS(materiality.overall)}</dd>
+            <div className={`card space-y-3 ${materiality || !hasBooks ? "" : "border-brand/40 bg-brand-soft/30"}`}>
+              <div className="flex items-center gap-3">
+                <span className="bubble bg-brand-soft text-brand font-black">2</span>
+                <div className="flex-1">
+                  <h2 className="card-title">מהותיות</h2>
+                  <p className="text-xs text-muted">קובעת מה נחשב &quot;גדול&quot; בבדיקות</p>
+                </div>
+                {materiality && <Icons.check size={20} className="text-good" />}
               </div>
-              <div>
-                <dt className="text-muted">לביצוע</dt>
-                <dd className="num font-bold">{formatILS(materiality.performance)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted">זניחה</dt>
-                <dd className="num font-bold">{formatILS(materiality.trivial)}</dd>
-              </div>
-              <dd className="col-span-3 text-xs text-muted">
-                לפי {MATERIALITY_BASES[e.materialityBasis as MaterialityBasis]?.label} · {e.materialityPct}%
-              </dd>
-            </dl>
-          ) : (
-            <p className="text-xs text-muted">הגדירו מהותיות כדי לסמן פקודות מהותיות ולחשב מדגם.</p>
-          )}
-        </div>
-      </div>
+              {materiality && (
+                <dl className="grid grid-cols-3 gap-2 rounded-2xl bg-surface-2 p-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-muted">כוללת</dt>
+                    <dd className="num font-bold">{formatILS(materiality.overall)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">לביצוע</dt>
+                    <dd className="num font-bold">{formatILS(materiality.performance)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">זניחה</dt>
+                    <dd className="num font-bold">{formatILS(materiality.trivial)}</dd>
+                  </div>
+                  <dd className="col-span-3 text-xs text-muted">
+                    {MATERIALITY_BASES[e.materialityBasis as MaterialityBasis]?.label} · {e.materialityPct}%
+                  </dd>
+                </dl>
+              )}
+              {write && (
+                <details className="panel" open={!materiality}>
+                  <summary className="link text-sm">{materiality ? "שינוי" : "הגדרה"}</summary>
+                  <div className="mt-3">
+                    <MaterialityForm
+                      action={setMaterialityAction.bind(null, e.id)}
+                      initial={{ basis: e.materialityBasis, base: e.materialityBase, pct: e.materialityPct }}
+                    />
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
 
-      {lines.length > 0 && (
+          {/* שלב 3: הבדיקות */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="bubble bg-brand-soft text-brand font-black">3</span>
+              <h2 className="card-title">הבדיקות</h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {TABS.map((t) => {
+                const Icon = Icons[t.icon];
+                const st = status[t.key];
+                return (
+                  <Link
+                    key={t.key}
+                    href={hasBooks ? `/audit/${e.id}?tab=${t.key}` : `/audit/${e.id}`}
+                    aria-disabled={!hasBooks}
+                    className={`tile ${hasBooks ? "" : "pointer-events-none opacity-50"}`}
+                  >
+                    <span className={`bubble ${t.tone}`}>
+                      <Icon size={22} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-bold">{t.label}</span>
+                        {st.text && <span className={`badge ${TONE_BADGE[st.tone]}`}>{st.text}</span>}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted">{t.blurb}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+
+      {tab !== null && hasBooks && (
         <>
           <nav className="pills w-fit max-w-full overflow-x-auto" aria-label="חלקי התיק">
             {TABS.map((t) => (
@@ -147,17 +244,11 @@ export default async function EngagementPage({ params, searchParams }: PageProps
               performance={materiality?.performance ?? null}
               by={sp.by === "group" ? "group" : "account"}
               write={write}
-              notes={await listNotes(org.id, e.id)}
+              notes={notes}
             />
           )}
           {tab === "recon" && (
-            <ReconTab
-              data={data}
-              statements={await listBankStatements(org.id, e.id)}
-              notes={await listNotes(org.id, e.id)}
-              tolerance={materiality?.trivial ?? 1000_00}
-              write={write}
-            />
+            <ReconTab data={data} statements={statements} notes={notes} tolerance={materiality?.trivial ?? 1000_00} write={write} />
           )}
           {tab === "je" && (
             <JournalTab lines={lines} yearEnd={e.yearEnd} performance={materiality?.performance ?? Number.MAX_SAFE_INTEGER} />
@@ -426,9 +517,8 @@ function SourcePanel({ engagement: e }: { engagement: Data["engagement"] }) {
   const meta = e.sourceMeta as SourceMeta | null;
   const issues = (e.importIssues as { severity: "error" | "warning"; message: string }[] | null) ?? [];
   return (
-    <div className="card flex flex-wrap items-start justify-between gap-x-6 gap-y-2 text-sm">
+    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 rounded-2xl bg-surface-2 p-3 text-sm">
       <div className="min-w-0 space-y-1">
-      <h2 className="card-title">מקור הנתונים</h2>
       {e.sourceType === "uniform" && meta ? (
         <p className="text-muted">
           קובץ במבנה אחיד

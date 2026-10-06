@@ -13,7 +13,7 @@ export default function proxy(req: NextRequest) {
 
   if (!isPublic && !hasSession) {
     const url = new URL("/login", req.nextUrl);
-    if (pathname !== "/") url.searchParams.set("next", pathname);
+    if (pathname !== "/" && pathname !== "/audit") url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

@@ -57,7 +57,6 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
     <div className="space-y-5">
       <PageHeader
         title="הוצאות"
-        description="הוצאות העסק, עם המע״מ לקיזוז והחלק המוכר למס לפי הקטגוריה. אפשר לצלם קבלה, והפרטים יתמלאו מעצמם."
       />
       {can("write_books") && !prefill && (
         <Collapsible title="צילום או העלאת קבלה" description="הקבלה נשמרת, והפרטים נקראים ממנה אוטומטית" open={rows.length === 0}>

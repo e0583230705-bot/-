@@ -85,15 +85,13 @@ export default async function DashboardPage() {
       </header>
 
       {isEmpty && (
-        <section className="card flex flex-col gap-4 border-brand/30 bg-brand-soft/40 sm:flex-row sm:items-center">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand text-white">
+        <section className="card flex flex-col gap-4 border-teal/30 bg-teal-soft/40 sm:flex-row sm:items-center">
+          <div className="bubble h-12 w-12 bg-teal text-white">
             <Icons.sparkles size={22} />
           </div>
           <div className="flex-1">
-            <p className="font-bold">ברוכים הבאים! העסק מוכן, עכשיו אפשר להתחיל.</p>
-            <p className="text-sm text-muted">
-              הדרך הכי טובה להכיר את המערכת: להפיק מסמך ראשון או לרשום הוצאה. המספרים כאן יתמלאו מעצמם.
-            </p>
+            <p className="font-bold">העסק מוכן. מתחילים?</p>
+            <p className="text-sm text-muted">מפיקים מסמך ראשון או מייבאים את תנועות הבנק, והמספרים כאן מתמלאים מעצמם.</p>
           </div>
           {write && (
             <div className="flex flex-wrap gap-2">
@@ -109,17 +107,19 @@ export default async function DashboardPage() {
       )}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="הכנסות מתחילת השנה" value={formatILS(ytd.revenue)} hint="לפני מע״מ" />
-        <Stat label="הוצאות מוכרות" value={formatILS(ytd.recognizedExpenses)} />
-        <Stat label="רווח לפני מס" value={formatILS(ytd.profit)} tone={ytd.profit >= 0 ? "good" : "bad"} />
+        <Stat label="הכנסות השנה" value={formatILS(ytd.revenue)} hint="לפני מע״מ" tone="teal" icon="fileText" />
+        <Stat label="הוצאות מוכרות" value={formatILS(ytd.recognizedExpenses)} tone="orange" icon="receipt" />
+        <Stat label="רווח לפני מס" value={formatILS(ytd.profit)} tone={ytd.profit >= 0 ? "good" : "bad"} icon="chart" />
         {vat ? (
           <Stat
-            label={vat.vatDue >= 0 ? "מע״מ לתשלום בתקופה" : "החזר מע״מ צפוי"}
+            label={vat.vatDue >= 0 ? "מע״מ לתשלום" : "החזר מע״מ צפוי"}
             value={formatILS(Math.abs(vat.vatDue))}
             hint={`תקופה ${vatPeriod!.label}`}
+            tone="sky"
+            icon="percent"
           />
         ) : (
-          <Stat label="מע״מ" value="פטור" hint={`${profile.label} אינו מדווח מע״מ`} />
+          <Stat label="מע״מ" value="פטור" hint={`${profile.label} אינו מדווח מע״מ`} tone="sky" icon="percent" />
         )}
       </section>
 

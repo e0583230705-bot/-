@@ -20,7 +20,7 @@ export default async function OnboardingPage() {
         <OnboardingForm />
       </div>
       {hasOrgs && (
-        <Link href="/" className="link mt-4 inline-block text-sm">
+        <Link href="/audit" className="link mt-4 inline-block text-sm">
           חזרה ללוח הבקרה
         </Link>
       )}
