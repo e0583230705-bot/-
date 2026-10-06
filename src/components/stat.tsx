@@ -11,10 +11,10 @@ export function Stat({
 }) {
   const color = tone === "good" ? "text-brand" : tone === "bad" ? "text-danger" : "";
   return (
-    <div className="card">
-      <p className="text-sm text-muted">{label}</p>
-      <p className={`num mt-1 text-right text-2xl font-bold ${color}`}>{value}</p>
-      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
+    <div className="card flex flex-col gap-1 p-4">
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className={`num text-right text-[1.6rem] font-bold leading-tight tracking-tight ${color}`}>{value}</p>
+      {hint && <p className="text-xs text-muted">{hint}</p>}
     </div>
   );
 }

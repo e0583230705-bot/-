@@ -22,7 +22,7 @@ export function BankUploadForm() {
           accept=".csv,text/csv,text/plain"
           required
           aria-label="קובץ תנועות"
-          className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
+          className="text-sm text-muted file:me-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand-soft file:px-3.5 file:py-2 file:text-sm file:font-semibold file:text-brand"
         />
         <button className="btn" disabled={pending || !ready}>
           {pending ? "מייבא..." : "ייבוא תנועות"}

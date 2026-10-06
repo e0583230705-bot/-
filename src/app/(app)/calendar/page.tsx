@@ -3,6 +3,7 @@ import { profileOf } from "@/lib/services/organizations";
 import { buildTaxCalendar } from "@/lib/domain/tax-calendar";
 import type { VatFrequency } from "@/lib/domain/business-types";
 import { formatDate, todayISO } from "@/lib/format";
+import { PageHeader } from "@/components/page-header";
 
 export default async function CalendarPage() {
   const { org } = await getContext();
@@ -12,13 +13,12 @@ export default async function CalendarPage() {
   const deadlines = buildTaxCalendar(year, profile, org.vatFrequency as VatFrequency);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">מועדי דיווח {year}</h1>
-      <p className="text-sm text-muted">
-        לפי הכללים הכלליים ל{profile.label}. מועד שנופל בסוף שבוע נדחה ליום ראשון. חגים ודחיות
-        מיוחדות של רשות המסים עדיין לא מחושבים, לכן כדאי לוודא מול הודעות הרשות.
-      </p>
-      <div className="card overflow-x-auto p-0">
+    <div className="space-y-5">
+      <PageHeader
+        title={<>מועדי דיווח <span className="num">{year}</span></>}
+        description={`לפי הכללים הכלליים ל${profile.label}. מועד שנופל בסוף שבוע נדחה ליום ראשון. חגים ודחיות מיוחדות של רשות המסים עדיין לא מחושבים, לכן כדאי לוודא מול הודעות הרשות.`}
+      />
+      <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -32,7 +32,10 @@ export default async function CalendarPage() {
               const past = d.due < today;
               return (
                 <tr key={`${d.kind}-${d.due}-${d.periodLabel}`} className={past ? "text-muted" : ""}>
-                  <td className="num">{formatDate(d.due)}</td>
+                  <td className="num whitespace-nowrap">
+                    {formatDate(d.due)}
+                    {!past && d.due === today && <span className="badge badge-bad ms-2">היום</span>}
+                  </td>
                   <td>{d.title}</td>
                   <td className="num">{d.periodLabel}</td>
                 </tr>

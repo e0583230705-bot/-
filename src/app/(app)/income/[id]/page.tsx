@@ -13,6 +13,7 @@ import { getCustomer } from "@/lib/services/customers";
 import { emailConfigured } from "@/lib/email/send";
 import { SendDocumentForm } from "@/components/send-document-form";
 import { markPaidAction, markUnpaidAction, sendDocumentAction } from "../../../actions";
+import { PageHeader } from "@/components/page-header";
 
 const PAID_VIA: Record<string, string> = { bank: "לפי תנועת בנק", receipt: "לפי קבלה", manual: "סימון ידני" };
 
@@ -43,26 +44,26 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
   ]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Link href="/income" className="text-sm text-brand">
-            → חזרה למסמכים
-          </Link>
-          <h1 className="text-2xl font-bold">{documentTitle(doc.type, doc.number)}</h1>
-          <p className="text-sm text-muted">
+    <div className="space-y-5">
+      <PageHeader
+        back={{ href: "/income", label: "הכנסות ומסמכים" }}
+        title={documentTitle(doc.type, doc.number)}
+        description={
+          <>
             {doc.customerName} · <span className="num">{formatDate(doc.issueDate)}</span>
-          </p>
-        </div>
-        <a href={`/income/${doc.id}/pdf`} className="btn" download>
-          {willBeOriginal ? "הורדת המקור (PDF)" : "הורדת העתק (PDF)"}
-        </a>
-      </div>
+          </>
+        }
+        actions={
+          <a href={`/income/${doc.id}/pdf`} className="btn" download>
+            {willBeOriginal ? "הורדת המקור (PDF)" : "הורדת העתק (PDF)"}
+          </a>
+        }
+      />
 
       {status && (
         <div className="card space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="font-bold">תשלום</h2>
+            <h2 className="card-title">תשלום</h2>
             <PaymentBadge status={status} />
             {status.kind === "paid" && (
               <span className="text-sm text-muted">
@@ -89,7 +90,7 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
       )}
 
       {doc.allocationRequired && !doc.allocationNumber && (
-        <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+        <p className="notice notice-warn">
           חשבונית זו דורשת מספר הקצאה מרשות המסים. בלי מספר הקצאה הלקוח לא יוכל לקזז את המע״מ. החיבור
           לרשות המסים יתווסף בשלב הבא.
         </p>
@@ -104,7 +105,7 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
 
       {ctx.can("write_books") && (
         <div className="card space-y-3">
-          <h2 className="font-bold">שליחה ללקוח</h2>
+          <h2 className="card-title">שליחה ללקוח</h2>
           <SendDocumentForm
             action={sendDocumentAction.bind(null, doc.id)}
             defaultEmail={customer?.email ?? undefined}
@@ -127,7 +128,7 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
         title="תצוגת המסמך"
         srcDoc={html}
         sandbox=""
-        className="h-[1000px] w-full rounded-xl border border-border bg-white"
+        className="h-[1000px] w-full rounded-2xl border border-border bg-white shadow-card"
       />
     </div>
   );

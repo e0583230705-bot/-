@@ -3,6 +3,8 @@ import { getContext } from "@/lib/auth/dal";
 import { loadLedger } from "@/lib/services/reports";
 import { expensesByCategory, monthlyBreakdown } from "@/lib/domain/reports";
 import { formatILS, todayISO } from "@/lib/format";
+import { PageHeader } from "@/components/page-header";
+import { Stat } from "@/components/stat";
 
 const MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
@@ -29,39 +31,32 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">דוח שנתי {year}</h1>
-        <div className="flex gap-2">
-          <Link href={`/reports?year=${year - 1}`} className="btn-ghost">
-            {year - 1}
-          </Link>
-          {year < currentYear && (
-            <Link href={`/reports?year=${year + 1}`} className="btn-ghost">
-              {year + 1}
+      <PageHeader
+        title={<>דוח שנתי <span className="num">{year}</span></>}
+        description="סיכום השנה לקראת הדוח השנתי: הכנסות, הוצאות מוכרות ורווח, לפי חודשים ולפי קטגוריות."
+        actions={
+          <div className="pills">
+            <Link href={`/reports?year=${year - 1}`} className="pill num">
+              {year - 1}
             </Link>
-          )}
-        </div>
-      </div>
+            <span className="pill pill-active num">{year}</span>
+            {year < currentYear && (
+              <Link href={`/reports?year=${year + 1}`} className="pill num">
+                {year + 1}
+              </Link>
+            )}
+          </div>
+        }
+      />
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        <div className="card">
-          <p className="text-sm text-muted">הכנסות (לפני מע״מ)</p>
-          <p className="num mt-1 text-right text-2xl font-bold">{formatILS(totals.revenue)}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-muted">הוצאות מוכרות</p>
-          <p className="num mt-1 text-right text-2xl font-bold">{formatILS(totals.recognizedExpenses)}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-muted">רווח לפני מס</p>
-          <p className={`num mt-1 text-right text-2xl font-bold ${totals.profit >= 0 ? "text-brand" : "text-danger"}`}>
-            {formatILS(totals.profit)}
-          </p>
-        </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <Stat label="הכנסות (לפני מע״מ)" value={formatILS(totals.revenue)} />
+        <Stat label="הוצאות מוכרות" value={formatILS(totals.recognizedExpenses)} />
+        <Stat label="רווח לפני מס" value={formatILS(totals.profit)} tone={totals.profit >= 0 ? "good" : "bad"} />
       </section>
 
-      <section className="card overflow-x-auto p-0">
-        <h2 className="p-4 pb-0 font-bold">פילוח חודשי</h2>
+      <section className="table-wrap">
+        <h2 className="card-title p-5 pb-0">פילוח חודשי</h2>
         <table className="table mt-2">
           <thead>
             <tr>
@@ -99,7 +94,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
             </tr>
           </tbody>
         </table>
-        <p className="flex gap-4 p-4 pt-2 text-xs text-muted">
+        <p className="flex gap-4 p-5 pt-3 text-xs text-muted">
           <span className="flex items-center gap-1">
             <span className="inline-block h-1.5 w-4 rounded bg-brand" /> הכנסות
           </span>
@@ -109,8 +104,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         </p>
       </section>
 
-      <section className="card overflow-x-auto p-0">
-        <h2 className="p-4 pb-0 font-bold">הוצאות לפי קטגוריה</h2>
+      <section className="table-wrap">
+        <h2 className="card-title p-5 pb-0">הוצאות לפי קטגוריה</h2>
         {categories.length === 0 ? (
           <p className="p-4 text-sm text-muted">אין הוצאות בשנה הזו.</p>
         ) : (
@@ -138,7 +133,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       </section>
 
       <section className="card space-y-3">
-        <h2 className="font-bold">ייצוא לרואה החשבון</h2>
+        <h2 className="card-title">ייצוא לרואה החשבון</h2>
         <p className="text-sm text-muted">
           קבצים שנפתחים באקסל. הם מרכזים את הנתונים לקראת הדוח השנתי (טופס {profile.annualReportForm}), אבל הם לא
           הדוח עצמו.

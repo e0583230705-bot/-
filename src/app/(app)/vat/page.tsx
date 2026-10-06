@@ -5,6 +5,7 @@ import { profileOf } from "@/lib/services/organizations";
 import { reportingPeriods } from "@/lib/domain/tax-calendar";
 import type { VatFrequency } from "@/lib/domain/business-types";
 import { formatILS, todayISO } from "@/lib/format";
+import { PageHeader } from "@/components/page-header";
 
 export default async function VatPage({ searchParams }: PageProps<"/vat">) {
   const { org } = await getContext();
@@ -12,9 +13,9 @@ export default async function VatPage({ searchParams }: PageProps<"/vat">) {
 
   if (!profile.chargesVat) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">דוח מע״מ</h1>
-        <div className="card text-muted">{profile.label} אינו מדווח מע״מ תקופתי.</div>
+      <div className="space-y-5">
+        <PageHeader title="דוח מע״מ" />
+        <div className="notice notice-info">{profile.label} אינו מדווח מע״מ תקופתי, ולכן אין כאן מה להגיש.</div>
       </div>
     );
   }
@@ -36,29 +37,34 @@ export default async function VatPage({ searchParams }: PageProps<"/vat">) {
   ];
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">דוח מע״מ</h1>
+    <div className="space-y-5">
+      <PageHeader
+        title="דוח מע״מ"
+        description="המספרים להזנה בדיווח התקופתי באתר רשות המסים, לפי המסמכים וההוצאות שנרשמו."
+      />
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/vat?year=${year - 1}&p=0`} className="btn-ghost">
+        <Link href={`/vat?year=${year - 1}&p=0`} className="btn-ghost btn-sm num">
           {year - 1}
         </Link>
-        {periods.map((p, i) => (
-          <Link
-            key={p.label}
-            href={`/vat?year=${year}&p=${i}`}
-            className={p.label === period.label ? "btn" : "btn-ghost"}
-          >
-            <span className="num">{p.label.split("/")[0]}</span>
-          </Link>
-        ))}
-        <Link href={`/vat?year=${year + 1}&p=0`} className="btn-ghost">
+        <div className="pills">
+          {periods.map((p, i) => (
+            <Link
+              key={p.label}
+              href={`/vat?year=${year}&p=${i}`}
+              className={`pill num ${p.label === period.label ? "pill-active" : ""}`}
+            >
+              {p.label.split("/")[0]}
+            </Link>
+          ))}
+        </div>
+        <Link href={`/vat?year=${year + 1}&p=0`} className="btn-ghost btn-sm num">
           {year + 1}
         </Link>
       </div>
       <div className="card max-w-lg">
-        <p className="mb-3 text-sm text-muted">
+        <h2 className="card-title mb-3">
           תקופה <span className="num">{period.label}</span>
-        </p>
+        </h2>
         <dl className="divide-y divide-border">
           {rows.map(([label, value]) => (
             <div key={label} className="flex justify-between py-2 text-sm">

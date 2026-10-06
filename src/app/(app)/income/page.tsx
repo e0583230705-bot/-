@@ -5,6 +5,8 @@ import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
 import { formatDate, formatILS, todayISO } from "@/lib/format";
 import { paymentStatus, summarizeReceivables } from "@/lib/domain/receivables";
 import { PaymentBadge } from "@/components/payment-badge";
+import { EmptyState, PageHeader } from "@/components/page-header";
+import { Icons } from "@/components/icons";
 
 export default async function IncomePage({ searchParams }: PageProps<"/income">) {
   const { org, can } = await getContext();
@@ -19,22 +21,28 @@ export default async function IncomePage({ searchParams }: PageProps<"/income">)
     : all;
   const receivables = summarizeReceivables(all, today);
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">הכנסות ומסמכים</h1>
-        {can("write_books") && (
-          <Link href="/income/new" className="btn">
-            מסמך חדש
+    <div className="space-y-5">
+      <PageHeader
+        title="הכנסות ומסמכים"
+        description="חשבוניות, קבלות וחשבונות עסקה שהופקו ללקוחות. מסמך שהופק לא משתנה; לתיקון מפיקים זיכוי."
+        actions={
+          can("write_books") && (
+            <Link href="/income/new" className="btn">
+              <Icons.plus size={16} />
+              מסמך חדש
+            </Link>
+          )
+        }
+      />
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="pills">
+          <Link href="/income" className={`pill ${openOnly ? "" : "pill-active"}`}>
+            כל המסמכים
           </Link>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link href="/income" className={openOnly ? "btn-ghost" : "btn"}>
-          כל המסמכים
-        </Link>
-        <Link href="/income?filter=open" className={openOnly ? "btn" : "btn-ghost"}>
-          ממתינים לתשלום ({receivables.openCount})
-        </Link>
+          <Link href="/income?filter=open" className={`pill ${openOnly ? "pill-active" : ""}`}>
+            ממתינים לתשלום ({receivables.openCount})
+          </Link>
+        </div>
         {receivables.openCount > 0 && (
           <span className="text-muted">
             סה״כ פתוח <span className="num">{formatILS(receivables.open)}</span>
@@ -47,11 +55,23 @@ export default async function IncomePage({ searchParams }: PageProps<"/income">)
           </span>
         )}
       </div>
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         {docs.length === 0 ? (
-          <p className="p-6 text-center text-muted">
-            {openOnly ? "אין חשבוניות שממתינות לתשלום 🎉" : "עדיין לא הופקו מסמכים."}
-          </p>
+          openOnly ? (
+            <EmptyState title="אין חשבוניות שממתינות לתשלום" description="כל הלקוחות שילמו. יופי." />
+          ) : (
+            <EmptyState
+              title="עדיין לא הופקו מסמכים"
+              description="המסמך הראשון לוקח דקה: בוחרים סוג, לקוח ושורות, והמערכת מחשבת את המע״מ."
+              action={
+                can("write_books") && (
+                  <Link href="/income/new" className="btn">
+                    הפקת מסמך ראשון
+                  </Link>
+                )
+              }
+            />
+          )
         ) : (
           <table className="table">
             <thead>
@@ -69,7 +89,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/income">)
               {docs.map((d) => (
                 <tr key={d.id}>
                   <td>
-                    <Link href={`/income/${d.id}`} className="text-brand hover:underline">
+                    <Link href={`/income/${d.id}`} className="link">
                       {DOCUMENT_TYPES[d.type as DocumentType].label}{" "}
                       <span className="num">#{d.number}</span>
                     </Link>
@@ -84,7 +104,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/income">)
                   <td>
                     {d.allocationRequired ? (
                       d.allocationNumber ?? (
-                        <span className="rounded bg-warn-soft px-2 py-0.5 text-xs text-warn">נדרש</span>
+                        <span className="badge badge-warn">נדרש</span>
                       )
                     ) : (
                       <span className="text-muted">—</span>

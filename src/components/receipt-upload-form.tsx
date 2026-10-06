@@ -16,7 +16,7 @@ export function ReceiptUploadForm({ aiEnabled }: { aiEnabled: boolean }) {
           accept="image/jpeg,image/png,image/webp,application/pdf"
           required
           aria-label="קובץ קבלה"
-          className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
+          className="text-sm text-muted file:me-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand-soft file:px-3.5 file:py-2 file:text-sm file:font-semibold file:text-brand"
         />
         <button className="btn" disabled={pending || !ready}>
           {pending ? (aiEnabled ? "קורא את הקבלה..." : "מעלה...") : aiEnabled ? "סריקת קבלה" : "העלאת קבלה"}

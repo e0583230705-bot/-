@@ -3,29 +3,26 @@ import { getContext } from "@/lib/auth/dal";
 import { listEngagements } from "@/lib/services/audit";
 import { CreateEngagementForm } from "@/components/audit-forms";
 import { formatDate, todayISO } from "@/lib/format";
+import { Collapsible, EmptyState, PageHeader } from "@/components/page-header";
 
 export default async function AuditPage() {
   const { org, can } = await getContext();
   const engagements = await listEngagements(org.id);
   const year = Number(todayISO().slice(0, 4));
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">ביקורת דוחות</h1>
-        <p className="text-sm text-muted">
-          תיקי ביקורת של לקוחות המשרד. המערכת מבצעת את הבדיקות ומכינה את החומר; שיקול הדעת וחוות הדעת נשארים אצל רואה
-          החשבון המבקר.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="ביקורת דוחות"
+        description="תיקי ביקורת של לקוחות המשרד. המערכת מבצעת את הבדיקות ומכינה את החומר; שיקול הדעת וחוות הדעת נשארים אצל רואה החשבון המבקר."
+      />
       {can("write_books") && (
-        <div className="card space-y-2">
-          <h2 className="font-bold">תיק ביקורת חדש</h2>
+        <Collapsible title="תיק ביקורת חדש" description="שם הלקוח המבוקר, ח.פ. ושנת הדוח" open={engagements.length === 0}>
           <CreateEngagementForm defaultYear={year - 1} />
-        </div>
+        </Collapsible>
       )}
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         {engagements.length === 0 ? (
-          <p className="p-6 text-center text-muted">עדיין אין תיקי ביקורת.</p>
+          <EmptyState title="עדיין אין תיקי ביקורת" description="פותחים תיק ללקוח, קולטים את הספרים שלו, והבדיקות רצות מעצמן." />
         ) : (
           <table className="table">
             <thead>
@@ -40,7 +37,7 @@ export default async function AuditPage() {
               {engagements.map(({ engagement: e, lineCount }) => (
                 <tr key={e.id}>
                   <td>
-                    <Link href={`/audit/${e.id}`} className="text-brand hover:underline">
+                    <Link href={`/audit/${e.id}`} className="link">
                       {e.clientName}
                     </Link>
                     {e.clientTaxId && <span className="num ms-2 text-xs text-muted">{e.clientTaxId}</span>}

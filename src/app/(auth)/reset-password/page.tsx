@@ -5,14 +5,14 @@ export default async function ResetPasswordPage({ searchParams }: PageProps<"/re
   const { token } = await searchParams;
   return (
     <>
-      <h1 className="mb-6 text-2xl font-bold">בחירת סיסמה חדשה</h1>
-      <div className="card">
+      <div className="card p-6">
+        <h1 className="mb-5 text-xl font-bold">בחירת סיסמה חדשה</h1>
         {typeof token === "string" && token ? (
           <ResetPasswordForm token={token} />
         ) : (
           <p className="text-sm">
             הקישור חסר או לא תקין.{" "}
-            <Link href="/forgot-password" className="text-brand">
+            <Link href="/forgot-password" className="link">
               בקשו קישור חדש
             </Link>
           </p>

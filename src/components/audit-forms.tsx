@@ -50,7 +50,7 @@ export function LedgerImportForm({
           multiple
           required
           aria-label="קובצי הנהלת החשבונות"
-          className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
+          className="text-sm text-muted file:me-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand-soft file:px-3.5 file:py-2 file:text-sm file:font-semibold file:text-brand"
         />
         <button className="btn" disabled={pending || !ready}>
           {pending ? "קולט..." : label}
@@ -71,32 +71,36 @@ export function MaterialityForm({
 }) {
   const [state, action, pending, ready] = useFormAction<FormState>(serverAction, {});
   return (
-    <form method="post" onSubmit={action} className="space-y-2">
-      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_6rem_auto]">
-        <select name="basis" defaultValue={initial.basis ?? "profit_before_tax"} aria-label="בסיס" className="input">
-          {Object.entries(MATERIALITY_BASES).map(([key, b]) => (
-            <option key={key} value={key}>
-              {b.label} ({b.defaultPct}%)
-            </option>
-          ))}
-        </select>
-        <input
-          name="base"
-          inputMode="decimal"
-          placeholder="סכום הבסיס בש״ח"
-          aria-label="סכום הבסיס"
-          defaultValue={initial.base ? (initial.base / 100).toFixed(2) : ""}
-          required
-          className="input num"
-        />
-        <input
-          name="pct"
-          inputMode="decimal"
-          aria-label="אחוז"
-          defaultValue={initial.pct ?? 5}
-          required
-          className="input num"
-        />
+    <form method="post" onSubmit={action} className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-[1fr_5rem]">
+        <div>
+          <label className="label" htmlFor="basis">בסיס לחישוב</label>
+          <select id="basis" name="basis" defaultValue={initial.basis ?? "profit_before_tax"} className="input">
+            {Object.entries(MATERIALITY_BASES).map(([key, b]) => (
+              <option key={key} value={key}>
+                {b.label} ({b.defaultPct}%)
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="pct">אחוז</label>
+          <input id="pct" name="pct" inputMode="decimal" defaultValue={initial.pct ?? 5} required className="input num" />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div>
+          <label className="label" htmlFor="base">סכום הבסיס בש״ח</label>
+          <input
+            id="base"
+            name="base"
+            inputMode="decimal"
+            placeholder="למשל 1,250,000"
+            defaultValue={initial.base ? (initial.base / 100).toFixed(2) : ""}
+            required
+            className="input num"
+          />
+        </div>
         <button className="btn-ghost" disabled={pending || !ready}>
           חישוב
         </button>
@@ -167,7 +171,7 @@ export function BankStatementForm({
           accept=".csv,text/csv,text/plain"
           required
           aria-label="דף בנק"
-          className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
+          className="text-sm text-muted file:me-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand-soft file:px-3.5 file:py-2 file:text-sm file:font-semibold file:text-brand"
         />
         <button className="btn" disabled={pending || !ready}>
           {pending ? "קולט..." : "קליטת דף בנק"}

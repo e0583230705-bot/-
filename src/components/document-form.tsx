@@ -104,7 +104,7 @@ export function DocumentForm({
           <input id="issueDate" name="issueDate" type="date" defaultValue={today} required className="input" />
         </div>
         {paymentFor && (
-          <p className="rounded-lg bg-brand-soft px-3 py-2 text-sm text-brand sm:col-span-2">
+          <p className="notice notice-info sm:col-span-2">
             תשלום על {paymentFor.title}. אחרי ההפקה המסמך יסומן כשולם.
           </p>
         )}
@@ -230,7 +230,7 @@ export function DocumentForm({
         <textarea id="notes" name="notes" rows={2} className="input" />
       </div>
 
-      <dl className="card grid max-w-xs gap-1 bg-bg p-4 text-sm">
+      <dl className="grid max-w-xs gap-1 rounded-xl bg-surface-2 p-4 text-sm">
         <div className="flex justify-between">
           <dt>סכום</dt>
           <dd className="num">{formatILS(net)}</dd>

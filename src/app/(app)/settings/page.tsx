@@ -3,6 +3,7 @@ import { listMembers } from "@/lib/services/members";
 import { isRole, ROLES } from "@/lib/domain/permissions";
 import { AddMemberForm } from "@/components/add-member-form";
 import { removeMemberAction } from "../../actions";
+import { PageHeader } from "@/components/page-header";
 
 export default async function SettingsPage() {
   const { org, user, can } = await getContext();
@@ -10,13 +11,13 @@ export default async function SettingsPage() {
   const manage = can("manage_members");
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">משתמשים והרשאות</h1>
-      <p className="text-sm text-muted">
-        אפשר לתת גישה לרואה חשבון, לשותף או לעובד, כל אחד ברמת ההרשאה שמתאימה לו.
-      </p>
+    <div className="space-y-5">
+      <PageHeader
+        title="משתמשים והרשאות"
+        description="אפשר לתת גישה לרואה חשבון, לשותף או לעובד, כל אחד ברמת ההרשאה שמתאימה לו."
+      />
 
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -40,7 +41,7 @@ export default async function SettingsPage() {
                     {m.userId !== user.id && (
                       <form action={removeMemberAction}>
                         <input type="hidden" name="userId" value={m.userId} />
-                        <button className="text-xs text-danger">הסרה</button>
+                        <button className="btn-ghost btn-sm text-danger">הסרה</button>
                       </form>
                     )}
                   </td>
@@ -53,7 +54,7 @@ export default async function SettingsPage() {
 
       {manage && (
         <div className="card space-y-3">
-          <h2 className="font-bold">הוספת משתמש</h2>
+          <h2 className="card-title">הוספת משתמש</h2>
           <AddMemberForm />
           <ul className="space-y-1 text-xs text-muted">
             {Object.values(ROLES).map((r) => (

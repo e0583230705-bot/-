@@ -4,9 +4,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next } = await searchParams;
   return (
     <>
-      <h1 className="mb-1 text-2xl font-bold">התחברות</h1>
-      <p className="mb-6 text-muted">ברוכים השבים</p>
-      <div className="card">
+      <div className="card p-6">
+        <h1 className="text-xl font-bold">התחברות</h1>
+        <p className="mb-5 text-sm text-muted">ברוכים השבים</p>
         <LoginForm next={typeof next === "string" ? next : undefined} />
       </div>
     </>

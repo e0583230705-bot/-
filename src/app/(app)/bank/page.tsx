@@ -4,11 +4,12 @@ import { bankSummary, listBankTransactions, type BankFilter } from "@/lib/servic
 import { formatDate, formatILS } from "@/lib/format";
 import { BankUploadForm } from "@/components/bank-upload-form";
 import { ignoreTransactionAction, matchTransactionAction } from "../../actions";
+import { Collapsible, EmptyState, PageHeader } from "@/components/page-header";
 
 const STATUS: Record<string, { label: string; className: string }> = {
-  matched: { label: "הותאם", className: "bg-brand-soft text-brand" },
-  ignored: { label: "לא רלוונטי", className: "bg-bg text-muted" },
-  unmatched: { label: "ממתין", className: "bg-warn-soft text-warn" },
+  matched: { label: "הותאם", className: "badge-good" },
+  ignored: { label: "לא רלוונטי", className: "badge-muted" },
+  unmatched: { label: "ממתין", className: "badge-warn" },
 };
 
 export default async function BankPage({ searchParams }: PageProps<"/bank">) {
@@ -21,36 +22,38 @@ export default async function BankPage({ searchParams }: PageProps<"/bank">) {
   const write = can("write_books");
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">תנועות בנק</h1>
+    <div className="space-y-5">
+      <PageHeader
+        title="תנועות בנק"
+        description="מייבאים את דף הבנק, והמערכת מציעה לכל תנועה את המסמך או ההוצאה שמתאימים לה."
+      />
 
       {write && (
-        <div className="card space-y-2">
-          <h2 className="font-bold">ייבוא מקובץ</h2>
-          <p className="text-sm text-muted">
-            ייצאו מאתר הבנק את תנועות החשבון כקובץ CSV והעלו אותו כאן. אפשר להעלות קבצים חופפים, ותנועות
-            שכבר יובאו לא ייכנסו פעמיים.
-          </p>
+        <Collapsible
+          title="ייבוא תנועות מקובץ"
+          description="קובץ CSV מאתר הבנק. קבצים חופפים בסדר, תנועה לא תיכנס פעמיים."
+          open={summary.unmatched + summary.matched + summary.ignored === 0}
+        >
           <BankUploadForm />
-        </div>
+        </Collapsible>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link href="/bank" className={filter === "unmatched" ? "btn" : "btn-ghost"}>
+      <div className="pills w-fit text-sm">
+        <Link href="/bank" className={`pill ${filter === "unmatched" ? "pill-active" : ""}`}>
           ממתינות לטיפול ({summary.unmatched})
         </Link>
-        <Link href="/bank?filter=all" className={filter === "all" ? "btn" : "btn-ghost"}>
+        <Link href="/bank?filter=all" className={`pill ${filter === "all" ? "pill-active" : ""}`}>
           הכול ({summary.unmatched + summary.matched + summary.ignored})
         </Link>
       </div>
 
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         {transactions.length === 0 ? (
-          <p className="p-6 text-center text-muted">
-            {filter === "unmatched" && summary.matched + summary.ignored > 0
-              ? "כל התנועות טופלו 🎉"
-              : "עדיין לא יובאו תנועות."}
-          </p>
+          filter === "unmatched" && summary.matched + summary.ignored > 0 ? (
+            <EmptyState title="כל התנועות טופלו" description="אין תנועות שממתינות להתאמה." />
+          ) : (
+            <EmptyState title="עדיין לא יובאו תנועות" description="מורידים מאתר הבנק קובץ CSV של תנועות החשבון ומעלים אותו כאן למעלה." />
+          )
         ) : (
           <table className="table">
             <thead>
@@ -74,7 +77,7 @@ export default async function BankPage({ searchParams }: PageProps<"/bank">) {
                     {formatILS(t.amount)}
                   </td>
                   <td>
-                    <span className={`rounded px-2 py-0.5 text-xs ${STATUS[t.status].className}`}>
+                    <span className={`badge ${STATUS[t.status].className}`}>
                       {STATUS[t.status].label}
                     </span>
                   </td>
@@ -110,18 +113,18 @@ function TransactionActions({ tx }: { tx: Awaited<ReturnType<typeof listBankTran
           <input type="hidden" name="txId" value={tx.id} />
           <input type="hidden" name="kind" value={tx.suggestion.kind} />
           <input type="hidden" name="targetId" value={tx.suggestion.id} />
-          <button className="rounded-lg bg-brand-soft px-2 py-1 text-xs font-semibold text-brand">
+          <button className="btn-soft btn-sm">
             התאמה ל{tx.suggestion.label}
           </button>
         </form>
       )}
       {!tx.suggestion && tx.amount < 0 && (
-        <Link href={`/expenses?fromTx=${tx.id}`} className="rounded-lg border border-border px-2 py-1 text-xs">
+        <Link href={`/expenses?fromTx=${tx.id}`} className="btn-ghost btn-sm">
           רישום כהוצאה
         </Link>
       )}
       {!tx.suggestion && tx.amount > 0 && (
-        <Link href="/income/new" className="rounded-lg border border-border px-2 py-1 text-xs">
+        <Link href="/income/new" className="btn-ghost btn-sm">
           הפקת מסמך
         </Link>
       )}

@@ -68,3 +68,7 @@
 - Next.js 16 — לפני כתיבת קוד, לקרוא את התיעוד שב־`node_modules/next/dist/docs/` (ראו `AGENTS.md`).
 - יצירת קבצי מבנה אחיד לבדיקות מכרטסת CSV: `python3 scripts/dev/gen-uniform.py <csv> <outdir> <scale> <year> [skip-accounts]`.
 - בדיקות דפדפן נעשו עם Playwright מול `npm start`; כדאי לבדוק כל שינוי גם בדפדפן ולא רק בבדיקות.
+- **עיצוב**: מערכת העיצוב ב־`src/app/globals.css` (צבעים, `.card`, `.btn`, `.pills`, `.badge`, `.notice`, `.table-wrap`),
+  המעטפת ב־`src/app/(app)/layout.tsx` (פס עליון + תפריט צד עם אייקונים מ־`src/components/icons.tsx`),
+  וכותרות/מצבים ריקים/קופסאות מתקפלות ב־`src/components/page-header.tsx`. בעל הפרויקט ביקש ממשק קל, זורם ובהיר —
+  לשמור על זה בכל מסך חדש: כותרת + משפט הסבר, טפסים משניים בתוך `Collapsible`, מצב ריק עם הצעד הראשון.

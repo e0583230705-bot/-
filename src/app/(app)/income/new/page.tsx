@@ -9,6 +9,7 @@ import { getDocument } from "@/lib/services/documents";
 import { PAYMENT_FOR } from "@/lib/domain/receivables";
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
 import { documentTitle } from "@/lib/pdf/document-html";
+import { PageHeader } from "@/components/page-header";
 
 export default async function NewDocumentPage({ searchParams }: PageProps<"/income/new">) {
   const { org, can } = await getContext();
@@ -52,9 +53,13 @@ export default async function NewDocumentPage({ searchParams }: PageProps<"/inco
         }
       : undefined;
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">{paymentFor ? "הפקת מסמך תשלום" : "הפקת מסמך"}</h1>
-      <div className="card">
+    <div className="space-y-5">
+      <PageHeader
+        back={{ href: "/income", label: "הכנסות ומסמכים" }}
+        title={paymentFor ? "הפקת מסמך תשלום" : "הפקת מסמך"}
+        description={paymentFor ? undefined : "המע״מ והסכומים מחושבים תוך כדי מילוי. אחרי ההפקה המסמך נעול, ולתיקון מפיקים זיכוי."}
+      />
+      <div className="card max-w-3xl">
         <DocumentForm
           allowedTypes={profile.allowedDocuments}
           vatRate={profile.chargesVat ? vatRateOn(today) : 0}

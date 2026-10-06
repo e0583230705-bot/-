@@ -10,6 +10,7 @@ import { profileOf } from "@/lib/services/organizations";
 import { vatRateOn } from "@/lib/domain/vat";
 import { formatDate, formatILS, todayISO } from "@/lib/format";
 import { ExpenseForm } from "@/components/expense-form";
+import { Collapsible, EmptyState, PageHeader } from "@/components/page-header";
 
 export default async function ExpensesPage({ searchParams }: PageProps<"/expenses">) {
   const { org, can } = await getContext();
@@ -53,20 +54,23 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
   const [rows, categories] = await Promise.all([listExpenses(org.id), listCategories(org.id)]);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">הוצאות</h1>
+    <div className="space-y-5">
+      <PageHeader
+        title="הוצאות"
+        description="הוצאות העסק, עם המע״מ לקיזוז והחלק המוכר למס לפי הקטגוריה. אפשר לצלם קבלה, והפרטים יתמלאו מעצמם."
+      />
       {can("write_books") && !prefill && (
-        <div className="card">
+        <Collapsible title="צילום או העלאת קבלה" description="הקבלה נשמרת, והפרטים נקראים ממנה אוטומטית" open={rows.length === 0}>
           <ReceiptUploadForm aiEnabled={aiConfigured()} />
-        </div>
+        </Collapsible>
       )}
       {prefill?.bankTransactionId && (
-        <p className="rounded-lg bg-brand-soft px-3 py-2 text-sm text-brand">
+        <p className="notice notice-info">
           רישום הוצאה מתנועת בנק. השלימו קטגוריה ובדקו את המע״מ מול החשבונית של הספק.
         </p>
       )}
       {receipt && (
-        <div className="space-y-2 rounded-lg bg-brand-soft px-3 py-2 text-sm">
+        <div className="notice notice-info space-y-2">
           <p className="text-brand">
             {receipt.extractionStatus === "done"
               ? "הפרטים מולאו מהקבלה. בדקו אותם מול הקבלה לפני השמירה."
@@ -85,7 +89,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
         </div>
       )}
       {can("write_books") && (
-      <div className="card">
+      <Collapsible title="רישום הוצאה ידני" description="ספק, סכום וקטגוריה" open={Boolean(prefill) || rows.length === 0}>
         <ExpenseForm
           categories={categories.map((c) => ({ id: c.id, label: c.label }))}
           vatRate={vatRateOn(today)}
@@ -95,11 +99,11 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
           suppliers={suppliers}
           key={prefill?.receiptId ?? prefill?.bankTransactionId ?? "new"}
         />
-      </div>
+      </Collapsible>
       )}
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         {rows.length === 0 ? (
-          <p className="p-6 text-center text-muted">עדיין לא נרשמו הוצאות.</p>
+          <EmptyState title="עדיין לא נרשמו הוצאות" description="מעלים קבלה או ממלאים את הטופס למעלה. ההוצאה הראשונה היא הכי קלה." />
         ) : (
           <table className="table">
             <thead>
@@ -129,7 +133,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
                         href={`/expenses/receipts/${receiptMap.get(e.id)}`}
                         target="_blank"
                         rel="noopener"
-                        className="text-xs text-brand"
+                        className="link text-xs"
                       >
                         קבלה
                       </a>

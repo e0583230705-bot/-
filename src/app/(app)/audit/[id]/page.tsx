@@ -30,6 +30,7 @@ import { suggestVatAccounts, vatReasonableness } from "@/lib/domain/ledger/vat-r
 import { listBankStatements, type VatConfig } from "@/lib/services/audit";
 import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
 import { listNotes } from "@/lib/services/audit";
+import { Collapsible, PageHeader } from "@/components/page-header";
 
 const TABS = [
   { key: "tb", label: "מאזן בוחן" },
@@ -54,45 +55,52 @@ export default async function EngagementPage({ params, searchParams }: PageProps
     e.materialityBase && e.materialityPct ? computeMateriality(e.materialityBase, e.materialityPct) : null;
 
   return (
-    <div className="space-y-4">
-      <Link href="/audit" className="text-sm text-brand">
-        → כל התיקים
-      </Link>
-      <div>
-        <h1 className="text-2xl font-bold">
-          {e.clientName} · <span className="num">{e.fiscalYear}</span>
-        </h1>
-        <p className="text-sm text-muted">
-          {e.clientTaxId && (
-            <>
-              ח.פ. <span className="num">{e.clientTaxId}</span> ·{" "}
-            </>
-          )}
-          {e.sourceFilename ? (
-            <>
-              נקלט מ־<span className="num">{e.sourceFilename}</span> · {lines.length.toLocaleString("he-IL")} שורות
-            </>
-          ) : (
-            "עדיין לא נקלטו נתונים"
-          )}
-        </p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        back={{ href: "/audit", label: "כל התיקים" }}
+        title={
+          <>
+            {e.clientName} · <span className="num">{e.fiscalYear}</span>
+          </>
+        }
+        description={
+          <>
+            {e.clientTaxId && (
+              <>
+                ח.פ. <span className="num">{e.clientTaxId}</span> ·{" "}
+              </>
+            )}
+            {e.sourceFilename ? (
+              <>
+                נקלט מ־<span className="num">{e.sourceFilename}</span> · {lines.length.toLocaleString("he-IL")} שורות
+              </>
+            ) : (
+              "עדיין לא נקלטו נתונים"
+            )}
+          </>
+        }
+      />
 
       <SourcePanel engagement={e} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {write && (
-          <div className="card space-y-2">
-            <h2 className="font-bold">קליטת ספרי הלקוח</h2>
-            <p className="text-xs text-muted">
-              מומלץ: <strong>קובץ במבנה אחיד</strong> — בחרו יחד את BKMVDATA.TXT ו־INI.TXT מספריית OPENFRMT שהופקה
-              בתוכנה של הלקוח. אפשר גם כרטסת הנהלת חשבונות בקובץ CSV. קליטה חוזרת מחליפה את הנתונים.
-            </p>
-            <LedgerImportForm action={importLedgerAction.bind(null, e.id, "current")} label={`קליטת שנת הדוח (${e.fiscalYear})`} />
-          </div>
+          <Collapsible
+            title="קליטת ספרי הלקוח"
+            description="מבנה אחיד (BKMVDATA.TXT + INI.TXT) או כרטסת CSV"
+            open={lines.length === 0}
+          >
+            <div className="space-y-3">
+              <p className="text-xs leading-relaxed text-muted">
+                מומלץ: <strong>קובץ במבנה אחיד</strong> — בחרו יחד את BKMVDATA.TXT ו־INI.TXT מספריית OPENFRMT שהופקה
+                בתוכנה של הלקוח. אפשר גם כרטסת הנהלת חשבונות בקובץ CSV. קליטה חוזרת מחליפה את הנתונים.
+              </p>
+              <LedgerImportForm action={importLedgerAction.bind(null, e.id, "current")} label={`קליטת שנת הדוח (${e.fiscalYear})`} />
+            </div>
+          </Collapsible>
         )}
-        <div className="card space-y-2">
-          <h2 className="font-bold">מהותיות</h2>
+        <div className="card space-y-3">
+          <h2 className="card-title">מהותיות</h2>
           {write && (
             <MaterialityForm
               action={setMaterialityAction.bind(null, e.id)}
@@ -125,9 +133,9 @@ export default async function EngagementPage({ params, searchParams }: PageProps
 
       {lines.length > 0 && (
         <>
-          <nav className="flex flex-wrap gap-2">
+          <nav className="pills w-fit max-w-full overflow-x-auto" aria-label="חלקי התיק">
             {TABS.map((t) => (
-              <Link key={t.key} href={`/audit/${e.id}?tab=${t.key}`} className={t.key === tab ? "btn" : "btn-ghost"}>
+              <Link key={t.key} href={`/audit/${e.id}?tab=${t.key}`} className={`pill ${t.key === tab ? "pill-active" : ""}`}>
                 {t.label}
               </Link>
             ))}
@@ -178,9 +186,9 @@ function TrialBalanceTab({ accounts, lines }: Pick<Data, "accounts" | "lines">) 
   return (
     <div className="space-y-3">
       {tb.balanced && unbalanced.length === 0 ? (
-        <p className="rounded-lg bg-brand-soft px-3 py-2 text-sm text-brand">המאזן מאוזן: סך החובה שווה לסך הזכות בכל הפקודות.</p>
+        <p className="notice notice-info">המאזן מאוזן: סך החובה שווה לסך הזכות בכל הפקודות.</p>
       ) : (
-        <div className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+        <div className="notice notice-bad">
           <p className="font-bold">המאזן אינו מאוזן — {unbalanced.length} פקודות שהחובה והזכות בהן לא שווים</p>
           <ul className="mt-1 list-inside list-disc">
             {unbalanced.slice(0, 20).map((u) => (
@@ -191,7 +199,7 @@ function TrialBalanceTab({ accounts, lines }: Pick<Data, "accounts" | "lines">) 
           </ul>
         </div>
       )}
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -235,7 +243,7 @@ function JournalTab({ lines, yearEnd, performance }: { lines: Data["lines"]; yea
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 text-sm">
         {[...counts.entries()].map(([flag, n]) => (
-          <span key={flag} className="rounded-lg bg-warn-soft px-2 py-1 text-warn">
+          <span key={flag} className="badge badge-warn">
             {FLAG_LABELS[flag]}: <span className="num">{n}</span>
           </span>
         ))}
@@ -245,7 +253,7 @@ function JournalTab({ lines, yearEnd, performance }: { lines: Data["lines"]; yea
         <p className="text-xs text-muted">בדיקת &quot;סכום גבוה מהמהותיות&quot; תופעל אחרי הגדרת מהותיות.</p>
       )}
       {flagged.length > 0 && (
-        <div className="card overflow-x-auto p-0">
+        <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -370,7 +378,7 @@ function SampleTab({
           </form>
         )}
       </div>
-      <div className="card overflow-x-auto p-0">
+      <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -418,8 +426,9 @@ function SourcePanel({ engagement: e }: { engagement: Data["engagement"] }) {
   const meta = e.sourceMeta as SourceMeta | null;
   const issues = (e.importIssues as { severity: "error" | "warning"; message: string }[] | null) ?? [];
   return (
-    <div className="card space-y-2 text-sm">
-      <h2 className="font-bold">מקור הנתונים</h2>
+    <div className="card flex flex-wrap items-start justify-between gap-x-6 gap-y-2 text-sm">
+      <div className="min-w-0 space-y-1">
+      <h2 className="card-title">מקור הנתונים</h2>
       {e.sourceType === "uniform" && meta ? (
         <p className="text-muted">
           קובץ במבנה אחיד
@@ -441,16 +450,22 @@ function SourcePanel({ engagement: e }: { engagement: Data["engagement"] }) {
       ) : (
         <p className="text-muted">כרטסת הנהלת חשבונות (CSV)</p>
       )}
-      {issues.length === 0 ? (
-        <p className="text-brand">{e.sourceType === "uniform" ? "בדיקות שלמות הקובץ עברו ללא ממצאים." : "הקובץ נקלט."}</p>
-      ) : (
-        <ul className="space-y-1">
+      {issues.length > 0 && (
+        <ul className="space-y-1 pt-1">
           {issues.map((i) => (
             <li key={i.message} className={i.severity === "error" ? "text-danger" : "text-warn"}>
               {i.severity === "error" ? "✕" : "⚠"} {i.message}
             </li>
           ))}
         </ul>
+      )}
+      </div>
+      {issues.length === 0 ? (
+        <span className="badge badge-good">{e.sourceType === "uniform" ? "בדיקות השלמות עברו" : "נקלט"}</span>
+      ) : issues.some((i) => i.severity === "error") ? (
+        <span className="badge badge-bad">{issues.length} ממצאים בקובץ</span>
+      ) : (
+        <span className="badge badge-warn">{issues.length} אזהרות</span>
       )}
     </div>
   );
@@ -495,7 +510,7 @@ function AnalyticsTab({
   return (
     <div className="space-y-4">
       <div className="card space-y-2">
-        <h2 className="font-bold">נתוני השנה הקודמת ({e.fiscalYear - 1})</h2>
+        <h2 className="card-title">נתוני השנה הקודמת ({e.fiscalYear - 1})</h2>
         {prior ? (
           <p className="text-sm text-muted">
             נקלט מ־<span className="num">{prior.filename}</span> · {data.prior.lines.length.toLocaleString("he-IL")} שורות
@@ -517,17 +532,17 @@ function AnalyticsTab({
               <strong className={explained === flagged.length ? "text-brand" : "text-warn"}>{explained}</strong>
             </p>
             {hasGroups && (
-              <div className="flex gap-2 text-sm">
-                <Link href={`/audit/${e.id}?tab=analytics&by=account`} className={by === "account" ? "btn" : "btn-ghost"}>
+              <div className="pills text-sm">
+                <Link href={`/audit/${e.id}?tab=analytics&by=account`} className={`pill ${by === "account" ? "pill-active" : ""}`}>
                   לפי חשבון
                 </Link>
-                <Link href={`/audit/${e.id}?tab=analytics&by=group`} className={by === "group" ? "btn" : "btn-ghost"}>
+                <Link href={`/audit/${e.id}?tab=analytics&by=group`} className={`pill ${by === "group" ? "pill-active" : ""}`}>
                   לפי קבוצה במאזן
                 </Link>
               </div>
             )}
           </div>
-          <div className="card overflow-x-auto p-0">
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -544,7 +559,7 @@ function AnalyticsTab({
                   <tr key={r.key} className={r.flag ? "" : "text-muted"}>
                     <td>
                       {r.label}
-                      {r.flag && <span className="ms-2 rounded bg-warn-soft px-1.5 py-0.5 text-[11px] text-warn">{FLAG_TEXT[r.flag]}</span>}
+                      {r.flag && <span className="badge badge-warn ms-2">{FLAG_TEXT[r.flag]}</span>}
                     </td>
                     <td className="num text-end">{formatILS(r.prior)}</td>
                     <td className="num text-end">{formatILS(r.current)}</td>
@@ -570,11 +585,11 @@ function AnalyticsTab({
       )}
 
       <div className="space-y-2">
-        <h2 className="font-bold">חודשים חריגים ב־{e.fiscalYear}</h2>
+        <h2 className="card-title">חודשים חריגים ב־{e.fiscalYear}</h2>
         {spikes.length === 0 ? (
           <p className="text-sm text-muted">לא נמצאו חודשים חריגים מעל המהותיות.</p>
         ) : (
-          <div className="card overflow-x-auto p-0">
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -757,7 +772,7 @@ function ReconTab({
           </div>
         )}
         {vatConfig && (
-          <div className="card overflow-x-auto p-0">
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
