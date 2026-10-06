@@ -16,6 +16,8 @@ export interface NewExpense {
   vat: number;
   description?: string;
   referenceNumber?: string;
+  /** אם ההוצאה נוצרה מתנועת בנק — משייכים אותה לתנועה */
+  bankTransactionId?: string;
 }
 
 export async function addExpense(input: NewExpense) {
@@ -54,6 +56,20 @@ export async function addExpense(input: NewExpense) {
         gross: input.gross,
       })
       .returning();
+    if (input.bankTransactionId) {
+      const linked = await tx
+        .update(schema.bankTransactions)
+        .set({ status: "matched", matchedExpenseId: expense.id })
+        .where(
+          and(
+            eq(schema.bankTransactions.id, input.bankTransactionId),
+            eq(schema.bankTransactions.organizationId, org.id),
+            eq(schema.bankTransactions.status, "unmatched"),
+          ),
+        )
+        .returning({ id: schema.bankTransactions.id });
+      if (linked.length === 0) throw new ValidationError("תנועת הבנק כבר טופלה");
+    }
     await tx.insert(schema.auditLog).values({
       organizationId: org.id,
       action: "create",

@@ -12,14 +12,19 @@ export function ExpenseForm({
   vatRate,
   canDeductVat,
   today,
+  fromBank,
 }: {
   categories: { id: string; label: string }[];
   vatRate: number;
   canDeductVat: boolean;
   today: string;
+  /** מילוי מראש מתנועת בנק */
+  fromBank?: { id: string; date: string; description: string; gross: number };
 }) {
-  const [gross, setGross] = useState("");
-  const [vat, setVat] = useState("");
+  const initialGross = fromBank ? (fromBank.gross / 100).toFixed(2) : "";
+  const initialVat = fromBank ? (splitGross(fromBank.gross, vatRate).vat / 100).toFixed(2) : "";
+  const [gross, setGross] = useState(initialGross);
+  const [vat, setVat] = useState(initialVat);
   const [vatTouched, setVatTouched] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   // אחרי הצלחה מאפסים את הטופס לרישום ההוצאה הבאה; אחרי שגיאה הערכים נשמרים
@@ -43,14 +48,21 @@ export function ExpenseForm({
 
   return (
     <form ref={formRef} onSubmit={submitKeepingValues(action)} className="space-y-4">
+      {fromBank && <input type="hidden" name="bankTransactionId" value={fromBank.id} />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label className="label" htmlFor="date">תאריך</label>
-          <input id="date" name="date" type="date" defaultValue={today} required className="input" />
+          <input id="date" name="date" type="date" defaultValue={fromBank?.date ?? today} required className="input" />
         </div>
         <div>
           <label className="label" htmlFor="supplierName">ספק</label>
-          <input id="supplierName" name="supplierName" required className="input" />
+          <input
+            id="supplierName"
+            name="supplierName"
+            defaultValue={fromBank?.description}
+            required
+            className="input"
+          />
         </div>
         <div>
           <label className="label" htmlFor="categoryId">קטגוריה</label>

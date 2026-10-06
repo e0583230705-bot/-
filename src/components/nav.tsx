@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "לוח בקרה" },
   { href: "/income", label: "הכנסות ומסמכים" },
   { href: "/expenses", label: "הוצאות" },
+  { href: "/bank", label: "תנועות בנק" },
   { href: "/vat", label: "דוח מע\"מ" },
   { href: "/calendar", label: "מועדי דיווח" },
   { href: "/settings", label: "משתמשים והרשאות" },

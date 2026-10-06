@@ -188,3 +188,28 @@ export const auditLog = pgTable(
   },
   (t) => [index("audit_org_at").on(t.organizationId, t.at)],
 );
+
+/** תנועות שיובאו מקובץ הבנק, וההתאמה שלהן למסמכים ולהוצאות */
+export const bankTransactions = pgTable(
+  "bank_transactions",
+  {
+    id: id(),
+    organizationId: orgRef(),
+    date: date("date").notNull(),
+    description: text("description").notNull(),
+    /** חיובי — זיכוי; שלילי — חובה. באגורות */
+    amount: integer("amount").notNull(),
+    balance: integer("balance"),
+    reference: text("reference"),
+    fingerprint: text("fingerprint").notNull(),
+    /** unmatched | matched | ignored */
+    status: text("status").notNull().default("unmatched"),
+    matchedDocumentId: uuid("matched_document_id").references(() => documents.id),
+    matchedExpenseId: uuid("matched_expense_id").references(() => expenses.id),
+    importedAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("bank_tx_org_fingerprint").on(t.organizationId, t.fingerprint),
+    index("bank_tx_org_date").on(t.organizationId, t.date),
+  ],
+);

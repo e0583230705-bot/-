@@ -1,12 +1,20 @@
 import { getContext } from "@/lib/auth/dal";
 import { listCategories, listExpenses } from "@/lib/services/expenses";
+import { getBankTransaction } from "@/lib/services/bank";
 import { profileOf } from "@/lib/services/organizations";
 import { vatRateOn } from "@/lib/domain/vat";
 import { formatDate, formatILS, todayISO } from "@/lib/format";
 import { ExpenseForm } from "@/components/expense-form";
 
-export default async function ExpensesPage() {
+export default async function ExpensesPage({ searchParams }: PageProps<"/expenses">) {
   const { org, can } = await getContext();
+  const { fromTx } = await searchParams;
+  const tx =
+    typeof fromTx === "string" && /^[0-9a-f-]{36}$/i.test(fromTx) ? await getBankTransaction(org.id, fromTx) : null;
+  const fromBank =
+    tx && tx.amount < 0 && tx.status === "unmatched"
+      ? { id: tx.id, date: tx.date, description: tx.description, gross: -tx.amount }
+      : undefined;
   const profile = profileOf(org);
   const [rows, categories] = await Promise.all([listExpenses(org.id), listCategories(org.id)]);
   const today = todayISO();
@@ -14,6 +22,11 @@ export default async function ExpensesPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">הוצאות</h1>
+      {fromBank && (
+        <p className="rounded-lg bg-brand-soft px-3 py-2 text-sm text-brand">
+          רישום הוצאה מתנועת בנק. השלימו קטגוריה ובדקו את המע״מ מול החשבונית של הספק.
+        </p>
+      )}
       {can("write_books") && (
       <div className="card">
         <ExpenseForm
@@ -21,6 +34,7 @@ export default async function ExpensesPage() {
           vatRate={vatRateOn(today)}
           canDeductVat={profile.chargesVat}
           today={today}
+          fromBank={fromBank}
         />
       </div>
       )}

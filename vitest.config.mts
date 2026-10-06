@@ -10,5 +10,7 @@ export default defineConfig({
   },
   test: {
     env: { PGLITE_DATA_DIR: "memory://" },
+    // כל קובץ בדיקות מרים Postgres בזיכרון ומריץ מיגרציות — הבדיקה הראשונה בקובץ איטית יותר
+    testTimeout: 30_000,
   },
 });

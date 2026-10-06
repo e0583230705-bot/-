@@ -9,13 +9,17 @@ import { addMember, ForbiddenError, getRole, removeMember } from "@/lib/services
 import { createOrganization, ValidationError } from "@/lib/services/organizations";
 import { issueDocument } from "@/lib/services/documents";
 import { addExpense } from "@/lib/services/expenses";
+import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
+import { BankParseError } from "@/lib/domain/bank/parse";
 import { parseShekels } from "@/lib/domain/money";
 
-export type FormState = { error?: string; ok?: boolean };
+export type FormState = { error?: string; ok?: boolean; message?: string };
 
 function errorMessage(e: unknown): FormState {
   unstable_rethrow(e); // הפניות של Next (למשל לדף ההתחברות) צריכות לעבור הלאה
-  if (e instanceof ValidationError || e instanceof ForbiddenError) return { error: e.message };
+  if (e instanceof ValidationError || e instanceof ForbiddenError || e instanceof BankParseError) {
+    return { error: e.message };
+  }
   if (e instanceof z.ZodError) return { error: e.issues[0]?.message ?? "קלט לא תקין" };
   console.error(e);
   return { error: "אירעה שגיאה. נסו שוב." };
@@ -186,16 +190,64 @@ const expenseSchema = z.object({
   vat: shekels("סכום מע\"מ לא תקין"),
   description: z.string().optional(),
   referenceNumber: z.string().optional(),
+  bankTransactionId: z.union([z.uuid(), z.literal("")]).optional(),
 });
 
 export async function addExpenseAction(_: FormState, formData: FormData): Promise<FormState> {
+  let fromBank = false;
   try {
     const { org } = await requirePermission("write_books");
-    const input = expenseSchema.parse(Object.fromEntries(formData));
-    await addExpense({ organizationId: org.id, ...input });
+    const { bankTransactionId, ...input } = expenseSchema.parse(Object.fromEntries(formData));
+    await addExpense({ organizationId: org.id, ...input, bankTransactionId: bankTransactionId || undefined });
+    if (bankTransactionId) fromBank = true;
   } catch (e) {
     return errorMessage(e);
   }
   revalidatePath("/", "layout");
+  if (fromBank) redirect("/bank");
   return { ok: true };
+}
+
+export async function importBankFileAction(_: FormState, formData: FormData): Promise<FormState> {
+  let message: string;
+  try {
+    const { org } = await requirePermission("write_books");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ" };
+    const r = await importBankFile(org.id, new Uint8Array(await file.arrayBuffer()));
+    message = `יובאו ${r.imported} תנועות חדשות` + (r.duplicates ? `, ${r.duplicates} כבר היו במערכת` : "");
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath("/bank");
+  return { ok: true, message };
+}
+
+const uuid = z.uuid();
+
+/** פעולות כפתור בדף הבנק: קלט לא תקין או תנועה שכבר טופלה פשוט מתעדכנים בתצוגה, בלי דף שגיאה */
+async function bankButtonAction(run: (orgId: string) => Promise<void>) {
+  try {
+    const { org } = await requirePermission("write_books");
+    await run(org.id);
+  } catch (e) {
+    unstable_rethrow(e);
+    if (!(e instanceof ValidationError || e instanceof z.ZodError)) throw e;
+  }
+  revalidatePath("/bank");
+}
+
+export async function matchTransactionAction(formData: FormData) {
+  await bankButtonAction((orgId) =>
+    matchTransaction(orgId, uuid.parse(formData.get("txId")), {
+      kind: formData.get("kind") === "document" ? "document" : "expense",
+      id: uuid.parse(formData.get("targetId")),
+    }),
+  );
+}
+
+export async function ignoreTransactionAction(formData: FormData) {
+  await bankButtonAction((orgId) =>
+    setTransactionIgnored(orgId, uuid.parse(formData.get("txId")), formData.get("ignored") === "1"),
+  );
 }
