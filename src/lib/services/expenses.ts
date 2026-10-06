@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ISODate } from "@/lib/domain/vat";
 import { getOrganization, ValidationError } from "./organizations";
@@ -18,6 +18,8 @@ export interface NewExpense {
   referenceNumber?: string;
   /** אם ההוצאה נוצרה מתנועת בנק — משייכים אותה לתנועה */
   bankTransactionId?: string;
+  /** קבלה שהועלתה — משייכים אותה להוצאה */
+  receiptId?: string;
 }
 
 export async function addExpense(input: NewExpense) {
@@ -56,6 +58,20 @@ export async function addExpense(input: NewExpense) {
         gross: input.gross,
       })
       .returning();
+    if (input.receiptId) {
+      const attached = await tx
+        .update(schema.receipts)
+        .set({ expenseId: expense.id })
+        .where(
+          and(
+            eq(schema.receipts.id, input.receiptId),
+            eq(schema.receipts.organizationId, org.id),
+            isNull(schema.receipts.expenseId),
+          ),
+        )
+        .returning({ id: schema.receipts.id });
+      if (attached.length === 0) throw new ValidationError("הקבלה כבר שויכה להוצאה אחרת");
+    }
     if (input.bankTransactionId) {
       const linked = await tx
         .update(schema.bankTransactions)

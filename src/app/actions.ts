@@ -19,6 +19,7 @@ import { createOrganization, ValidationError } from "@/lib/services/organization
 import { issueDocument } from "@/lib/services/documents";
 import { addExpense } from "@/lib/services/expenses";
 import { createCustomer, updateCustomer } from "@/lib/services/customers";
+import { uploadReceipt } from "@/lib/services/receipts";
 import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
 import { BankParseError } from "@/lib/domain/bank/parse";
 import { parseShekels } from "@/lib/domain/money";
@@ -205,20 +206,27 @@ const expenseSchema = z.object({
   description: z.string().optional(),
   referenceNumber: z.string().optional(),
   bankTransactionId: z.union([z.uuid(), z.literal("")]).optional(),
+  receiptId: z.union([z.uuid(), z.literal("")]).optional(),
 });
 
 export async function addExpenseAction(_: FormState, formData: FormData): Promise<FormState> {
-  let fromBank = false;
+  let next: string | null = null;
   try {
     const { org } = await requirePermission("write_books");
-    const { bankTransactionId, ...input } = expenseSchema.parse(Object.fromEntries(formData));
-    await addExpense({ organizationId: org.id, ...input, bankTransactionId: bankTransactionId || undefined });
-    if (bankTransactionId) fromBank = true;
+    const { bankTransactionId, receiptId, ...input } = expenseSchema.parse(Object.fromEntries(formData));
+    await addExpense({
+      organizationId: org.id,
+      ...input,
+      bankTransactionId: bankTransactionId || undefined,
+      receiptId: receiptId || undefined,
+    });
+    if (bankTransactionId) next = "/bank";
+    else if (receiptId) next = "/expenses";
   } catch (e) {
     return errorMessage(e);
   }
   revalidatePath("/", "layout");
-  if (fromBank) redirect("/bank");
+  if (next) redirect(next);
   return { ok: true };
 }
 
@@ -348,4 +356,22 @@ export async function sendDocumentAction(documentId: string, _: FormState, formD
   }
   revalidatePath(`/income/${documentId}`);
   return { ok: true, message };
+}
+
+export async function scanReceiptAction(_: FormState, formData: FormData): Promise<FormState> {
+  let target: string;
+  try {
+    const { org, user } = await requirePermission("write_books");
+    const file = formData.get("receipt");
+    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ" };
+    const result = await uploadReceipt(org.id, user.id, {
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+    // גם כשהזיהוי נכשל הקובץ נשמר, וממשיכים למילוי ידני
+    target = `/expenses?receipt=${result.id}${result.error ? "&scan=failed" : ""}`;
+  } catch (e) {
+    return errorMessage(e);
+  }
+  redirect(target);
 }

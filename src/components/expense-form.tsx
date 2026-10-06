@@ -7,25 +7,43 @@ import { splitGross } from "@/lib/domain/vat";
 import { FormError } from "./form-error";
 import { useFormAction } from "./submit";
 
+export interface ExpensePrefill {
+  date?: string;
+  supplierName?: string;
+  supplierTaxId?: string;
+  referenceNumber?: string;
+  gross?: number;
+  vat?: number;
+  categoryId?: string;
+  description?: string;
+  bankTransactionId?: string;
+  receiptId?: string;
+}
+
 export function ExpenseForm({
   categories,
   vatRate,
   canDeductVat,
   today,
-  fromBank,
+  prefill = {},
 }: {
   categories: { id: string; label: string }[];
   vatRate: number;
   canDeductVat: boolean;
   today: string;
-  /** מילוי מראש מתנועת בנק */
-  fromBank?: { id: string; date: string; description: string; gross: number };
+  /** מילוי מראש — מתנועת בנק או מקבלה סרוקה. סכומים באגורות */
+  prefill?: ExpensePrefill;
 }) {
-  const initialGross = fromBank ? (fromBank.gross / 100).toFixed(2) : "";
-  const initialVat = fromBank ? (splitGross(fromBank.gross, vatRate).vat / 100).toFixed(2) : "";
+  const initialGross = prefill.gross !== undefined ? (prefill.gross / 100).toFixed(2) : "";
+  const initialVat =
+    prefill.vat !== undefined
+      ? (prefill.vat / 100).toFixed(2)
+      : prefill.gross !== undefined
+        ? (splitGross(prefill.gross, vatRate).vat / 100).toFixed(2)
+        : "";
   const [gross, setGross] = useState(initialGross);
   const [vat, setVat] = useState(initialVat);
-  const [vatTouched, setVatTouched] = useState(false);
+  const [vatTouched, setVatTouched] = useState(prefill.vat !== undefined);
   const formRef = useRef<HTMLFormElement>(null);
   // אחרי הצלחה מאפסים את הטופס לרישום ההוצאה הבאה; אחרי שגיאה הערכים נשמרים
   const [state, action, pending, ready] = useFormAction<FormState>(async (prev, formData) => {
@@ -48,25 +66,26 @@ export function ExpenseForm({
 
   return (
     <form ref={formRef} method="post" onSubmit={action} className="space-y-4">
-      {fromBank && <input type="hidden" name="bankTransactionId" value={fromBank.id} />}
+      {prefill.bankTransactionId && <input type="hidden" name="bankTransactionId" value={prefill.bankTransactionId} />}
+      {prefill.receiptId && <input type="hidden" name="receiptId" value={prefill.receiptId} />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label className="label" htmlFor="date">תאריך</label>
-          <input id="date" name="date" type="date" defaultValue={fromBank?.date ?? today} required className="input" />
+          <input id="date" name="date" type="date" defaultValue={prefill.date ?? today} required className="input" />
         </div>
         <div>
           <label className="label" htmlFor="supplierName">ספק</label>
           <input
             id="supplierName"
             name="supplierName"
-            defaultValue={fromBank?.description}
+            defaultValue={prefill.supplierName}
             required
             className="input"
           />
         </div>
         <div>
           <label className="label" htmlFor="categoryId">קטגוריה</label>
-          <select id="categoryId" name="categoryId" required className="input" defaultValue="">
+          <select id="categoryId" name="categoryId" required className="input" defaultValue={prefill.categoryId ?? ""}>
             <option value="" disabled>
               בחירה...
             </option>
@@ -109,15 +128,26 @@ export function ExpenseForm({
         </div>
         <div>
           <label className="label" htmlFor="referenceNumber">מספר חשבונית הספק</label>
-          <input id="referenceNumber" name="referenceNumber" className="input num" />
+          <input
+            id="referenceNumber"
+            name="referenceNumber"
+            defaultValue={prefill.referenceNumber}
+            className="input num"
+          />
         </div>
         <div>
           <label className="label" htmlFor="supplierTaxId">מספר עוסק של הספק</label>
-          <input id="supplierTaxId" name="supplierTaxId" inputMode="numeric" className="input num" />
+          <input
+            id="supplierTaxId"
+            name="supplierTaxId"
+            defaultValue={prefill.supplierTaxId}
+            inputMode="numeric"
+            className="input num"
+          />
         </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="description">תיאור</label>
-          <input id="description" name="description" className="input" />
+          <input id="description" name="description" defaultValue={prefill.description} className="input" />
         </div>
       </div>
       {!canDeductVat && (

@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   date,
   doublePrecision,
   index,
@@ -244,4 +245,32 @@ export const emailLog = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("email_log_org").on(t.organizationId, t.createdAt), index("email_log_document").on(t.documentId)],
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array }>({
+  dataType: () => "bytea",
+  fromDriver: (value) => Buffer.from(value),
+});
+
+/**
+ * קבלות וחשבוניות ספק שהועלו. חובה לשמור את המסמכים המקוריים לפי הוראות ניהול ספרים.
+ * (בהמשך יעברו לאחסון קבצים ייעודי; כרגע נשמרים ב־DB)
+ */
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: id(),
+    organizationId: orgRef(),
+    expenseId: uuid("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+    /** none | done | failed */
+    extractionStatus: text("extraction_status").notNull().default("none"),
+    extracted: jsonb("extracted"),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("receipts_org").on(t.organizationId, t.createdAt), index("receipts_expense").on(t.expenseId)],
 );
