@@ -111,3 +111,29 @@ describe("monetary unit sampling", () => {
     expect(new Set(a.selected.map((s) => s.id)).size).toBe(a.selected.length);
   });
 });
+
+describe("ledger CSV import", async () => {
+  const { parseLedgerCsv } = await import("./import-csv");
+  it("reads a debit/credit general ledger export with a preamble", () => {
+    const csv = [
+      "כרטסת הנהלת חשבונות 2026",
+      "תאריך,מספר תנועה,חשבון,שם חשבון,פרטים,אסמכתא,חובה,זכות",
+      '05/03/2026,101,1000,קופה,"מכירה במזומן",55,"1,180.00",',
+      "05/03/2026,101,4000,הכנסות,מכירה במזומן,55,,1000.00",
+      "05/03/2026,101,2200,מע\"מ עסקאות,מכירה במזומן,55,,180.00",
+      ',סה"כ,,,,,1180.00,1180.00',
+    ].join("\n");
+    const r = parseLedgerCsv(csv);
+    expect(r.accounts.map((a) => [a.code, a.name])).toEqual([
+      ["1000", "קופה"],
+      ["4000", "הכנסות"],
+      ["2200", 'מע"מ עסקאות'],
+    ]);
+    expect(r.lines.map((l) => l.amount)).toEqual([118000, -100000, -18000]);
+    expect(r.lines[0]).toMatchObject({ entryId: "101", date: "2026-03-05", description: "מכירה במזומן", reference: "55" });
+    expect(r.skipped).toBe(1);
+  });
+  it("explains files it cannot read", () => {
+    expect(() => parseLedgerCsv("a,b\n1,2")).toThrow(/לא זוהו/);
+  });
+});

@@ -280,3 +280,56 @@ export const receipts = pgTable(
   },
   (t) => [index("receipts_org").on(t.organizationId, t.createdAt), index("receipts_expense").on(t.expenseId)],
 );
+
+/** תיק ביקורת: לקוח מבוקר ושנת דוח, בתוך משרד רואי החשבון (organization) */
+export const auditEngagements = pgTable(
+  "audit_engagements",
+  {
+    id: id(),
+    organizationId: orgRef(),
+    clientName: text("client_name").notNull(),
+    clientTaxId: text("client_tax_id"),
+    fiscalYear: integer("fiscal_year").notNull(),
+    yearEnd: date("year_end").notNull(),
+    materialityBasis: text("materiality_basis"),
+    materialityBase: integer("materiality_base"),
+    materialityPct: doublePrecision("materiality_pct"),
+    sampleSeed: integer("sample_seed").notNull(),
+    sourceFilename: text("source_filename"),
+    importedAt: timestamp("imported_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("audit_engagements_org").on(t.organizationId, t.fiscalYear)],
+);
+
+export const auditAccounts = pgTable(
+  "audit_accounts",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    openingBalance: integer("opening_balance").notNull().default(0),
+  },
+  (t) => [uniqueIndex("audit_accounts_engagement_code").on(t.engagementId, t.code)],
+);
+
+export const auditLines = pgTable(
+  "audit_lines",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    entryId: text("entry_id").notNull(),
+    date: date("date").notNull(),
+    accountCode: text("account_code").notNull(),
+    amount: integer("amount").notNull(),
+    description: text("description").notNull(),
+    reference: text("reference"),
+  },
+  (t) => [index("audit_lines_engagement").on(t.engagementId, t.date)],
+);

@@ -20,6 +20,8 @@ import { issueDocument, markDocumentPaid, markDocumentUnpaid } from "@/lib/servi
 import { addExpense } from "@/lib/services/expenses";
 import { createCustomer, updateCustomer } from "@/lib/services/customers";
 import { uploadReceipt } from "@/lib/services/receipts";
+import { createEngagement, importLedger, redrawSample, setMateriality } from "@/lib/services/audit";
+import { parseShekels as parseMoney } from "@/lib/domain/money";
 import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
 import { BankParseError } from "@/lib/domain/bank/parse";
 import { parseShekels } from "@/lib/domain/money";
@@ -398,4 +400,69 @@ export async function markUnpaidAction(documentId: string) {
     if (!(e instanceof ValidationError || e instanceof z.ZodError)) throw e;
   }
   revalidatePath("/", "layout");
+}
+
+const engagementSchema = z.object({
+  clientName: z.string(),
+  clientTaxId: z.string().optional(),
+  fiscalYear: z.coerce.number().int(),
+});
+
+export async function createEngagementAction(_: FormState, formData: FormData): Promise<FormState> {
+  let id: string;
+  try {
+    const { org, user } = await requirePermission("write_books");
+    id = (await createEngagement(org.id, user.id, engagementSchema.parse(Object.fromEntries(formData)))).id;
+  } catch (e) {
+    return errorMessage(e);
+  }
+  redirect(`/audit/${id}`);
+}
+
+export async function importLedgerAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  let message: string;
+  try {
+    const { org } = await requirePermission("write_books");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ" };
+    const r = await importLedger(org.id, uuid.parse(engagementId), {
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+    message = `נקלטו ${r.lines.toLocaleString("he-IL")} שורות פקודה ב־${r.accounts} חשבונות` + (r.skipped ? ` (${r.skipped} שורות דולגו)` : "");
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true, message };
+}
+
+const materialitySchema = z.object({
+  basis: z.enum(["profit_before_tax", "revenue", "total_assets", "equity"]),
+  base: z.string().transform((v, ctx) => {
+    const a = parseMoney(v);
+    if (a === null) {
+      ctx.addIssue({ code: "custom", message: "סכום לא תקין" });
+      return z.NEVER;
+    }
+    return a;
+  }),
+  pct: z.coerce.number(),
+});
+
+export async function setMaterialityAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    await setMateriality(org.id, uuid.parse(engagementId), materialitySchema.parse(Object.fromEntries(formData)));
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true };
+}
+
+export async function redrawSampleAction(engagementId: string) {
+  const { org, user } = await requirePermission("write_books");
+  await redrawSample(org.id, uuid.parse(engagementId), user.id);
+  revalidatePath(`/audit/${engagementId}`);
 }

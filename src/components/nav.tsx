@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/vat", label: "דוח מע\"מ" },
   { href: "/reports", label: "דוח שנתי" },
   { href: "/calendar", label: "מועדי דיווח" },
+  { href: "/audit", label: "ביקורת דוחות" },
   { href: "/settings", label: "משתמשים והרשאות" },
 ];
 
