@@ -4,7 +4,16 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { endSession, getContext, requirePermission, requireUser, startSession } from "@/lib/auth/dal";
-import { authenticate, registerUser, setActiveOrganization } from "@/lib/services/auth";
+import {
+  authenticate,
+  createPasswordReset,
+  registerUser,
+  resetPassword,
+  setActiveOrganization,
+} from "@/lib/services/auth";
+import { appUrl, EmailError, sendEmail } from "@/lib/email/send";
+import { passwordResetEmail } from "@/lib/email/templates";
+import { sendDocumentToCustomer } from "@/lib/email/send-document";
 import { addMember, ForbiddenError, getRole, removeMember } from "@/lib/services/members";
 import { createOrganization, ValidationError } from "@/lib/services/organizations";
 import { issueDocument } from "@/lib/services/documents";
@@ -18,7 +27,7 @@ export type FormState = { error?: string; ok?: boolean; message?: string };
 
 function errorMessage(e: unknown): FormState {
   unstable_rethrow(e); // הפניות של Next (למשל לדף ההתחברות) צריכות לעבור הלאה
-  if (e instanceof ValidationError || e instanceof ForbiddenError || e instanceof BankParseError) {
+  if (e instanceof ValidationError || e instanceof ForbiddenError || e instanceof BankParseError || e instanceof EmailError) {
     return { error: e.message };
   }
   if (e instanceof z.ZodError) return { error: e.issues[0]?.message ?? "קלט לא תקין" };
@@ -291,4 +300,52 @@ export async function updateCustomerAction(id: string, _: FormState, formData: F
   }
   revalidatePath("/customers");
   redirect(`/customers/${id}`);
+}
+
+const emailField = z.string().trim().email("כתובת אימייל לא תקינה");
+
+/** תמיד אותה תשובה ובערך אותו זמן — כדי לא לחשוף אילו כתובות רשומות */
+export async function requestPasswordResetAction(_: FormState, formData: FormData): Promise<FormState> {
+  const started = Date.now();
+  try {
+    const email = emailField.parse(formData.get("email"));
+    const reset = await createPasswordReset(email);
+    if (reset) {
+      const link = appUrl(`/reset-password?token=${encodeURIComponent(reset.token)}`);
+      await sendEmail({ to: reset.user.email, ...passwordResetEmail({ name: reset.user.name, link }) });
+    }
+  } catch (e) {
+    if (e instanceof z.ZodError) return errorMessage(e);
+    unstable_rethrow(e);
+    console.error(e);
+  }
+  const wait = 1200 - (Date.now() - started);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  return { ok: true, message: "אם הכתובת רשומה במערכת, נשלח אליה קישור לאיפוס הסיסמה." };
+}
+
+export async function resetPasswordAction(_: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const userId = await resetPassword(String(formData.get("token") ?? ""), String(formData.get("password") ?? ""));
+    await startSession(userId);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  redirect("/");
+}
+
+export async function sendDocumentAction(documentId: string, _: FormState, formData: FormData): Promise<FormState> {
+  let message: string;
+  try {
+    const to = emailField.parse(formData.get("to"));
+    const result = await sendDocumentToCustomer(documentId, to, String(formData.get("message") ?? ""));
+    message =
+      result.status === "sent"
+        ? `המסמך נשלח אל ${to}`
+        : `שירות המיילים עוד לא מוגדר, ולכן המייל לא נשלח בפועל (נרשם ביומן). המסמך סומן כ"${result.mark === "original" ? "מקור" : "העתק"}".`;
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/income/${documentId}`);
+  return { ok: true, message };
 }

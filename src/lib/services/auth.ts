@@ -104,6 +104,64 @@ export async function setActiveOrganization(token: string, organizationId: strin
     .where(eq(schema.sessions.id, hashToken(token)));
 }
 
+const RESET_TTL_MS = 60 * 60 * 1000;
+const MAX_RESETS_PER_HOUR = 3;
+
+/**
+ * יוצר קישור איפוס. מחזיר null כשאין משתמש כזה או כשביקשו יותר מדי —
+ * המסך מציג תמיד את אותה הודעה, כדי לא לחשוף אילו כתובות רשומות.
+ */
+export async function createPasswordReset(emailInput: string) {
+  const db = await getDb();
+  const [user] = await db
+    .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email })
+    .from(schema.users)
+    .where(eq(schema.users.email, normalizeEmail(emailInput)));
+  if (!user) return null;
+
+  const [{ recent }] = await db
+    .select({ recent: sql<number>`count(*)::int` })
+    .from(schema.passwordResetTokens)
+    .where(
+      and(
+        eq(schema.passwordResetTokens.userId, user.id),
+        gt(schema.passwordResetTokens.createdAt, new Date(Date.now() - RESET_TTL_MS)),
+      ),
+    );
+  if (recent >= MAX_RESETS_PER_HOUR) return null;
+
+  const token = randomBytes(32).toString("base64url");
+  await db.insert(schema.passwordResetTokens).values({
+    id: hashToken(token),
+    userId: user.id,
+    expiresAt: new Date(Date.now() + RESET_TTL_MS),
+  });
+  return { user, token };
+}
+
+/** מחליף סיסמה, מבטל את כל הסשנים והקישורים הפתוחים של המשתמש ומשחרר נעילה */
+export async function resetPassword(token: string, newPassword: string) {
+  const problem = passwordProblem(newPassword);
+  if (problem) throw new ValidationError(problem);
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(schema.passwordResetTokens)
+    .where(and(eq(schema.passwordResetTokens.id, hashToken(token)), gt(schema.passwordResetTokens.expiresAt, new Date())));
+  if (!row) throw new ValidationError("הקישור לא תקין או שפג תוקפו. בקשו קישור חדש.");
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.users)
+      .set({ passwordHash, failedLogins: 0, lockedUntil: null })
+      .where(eq(schema.users.id, row.userId));
+    await tx.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.userId, row.userId));
+    await tx.delete(schema.sessions).where(eq(schema.sessions.userId, row.userId));
+  });
+  return row.userId;
+}
+
 export async function deleteSession(token: string) {
   const db = await getDb();
   await db.delete(schema.sessions).where(eq(schema.sessions.id, hashToken(token)));

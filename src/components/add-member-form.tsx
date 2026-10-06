@@ -1,20 +1,20 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useRef } from "react";
 import { addMemberAction, type FormState } from "@/app/actions";
 import { ROLES } from "@/lib/domain/permissions";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 export function AddMemberForm() {
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, action, pending] = useActionState<FormState, FormData>(async (prev, formData) => {
+  const [state, action, pending, ready] = useFormAction<FormState>(async (prev, formData) => {
     const result = await addMemberAction(prev, formData);
     if (result.ok) formRef.current?.reset();
     return result;
   }, {});
   return (
-    <form ref={formRef} onSubmit={submitKeepingValues(action)} className="space-y-3">
+    <form ref={formRef} method="post" onSubmit={action} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <input
           name="email"
@@ -31,7 +31,7 @@ export function AddMemberForm() {
             </option>
           ))}
         </select>
-        <button className="btn" disabled={pending}>
+        <button className="btn" disabled={pending || !ready}>
           הוספה
         </button>
       </div>

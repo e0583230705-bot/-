@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
 import { loginAction, signupAction, type FormState } from "@/app/actions";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth/password-rules";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 export function LoginForm({ next }: { next?: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(loginAction, {});
+  const [state, action, pending, ready] = useFormAction<FormState>(loginAction, {});
   return (
-    <form onSubmit={submitKeepingValues(action)} className="space-y-4">
+    <form method="post" onSubmit={action} className="space-y-4">
       <input type="hidden" name="next" value={next ?? "/"} />
       <div>
         <label className="label" htmlFor="email">אימייל</label>
@@ -28,9 +27,14 @@ export function LoginForm({ next }: { next?: string }) {
         />
       </div>
       <FormError message={state.error} />
-      <button className="btn w-full" disabled={pending}>
+      <button className="btn w-full" disabled={pending || !ready}>
         {pending ? "מתחבר..." : "התחברות"}
       </button>
+      <p className="text-center text-sm">
+        <Link href="/forgot-password" className="text-muted hover:text-brand">
+          שכחתי סיסמה
+        </Link>
+      </p>
       <p className="text-center text-sm text-muted">
         אין לך חשבון?{" "}
         <Link href="/signup" className="text-brand">
@@ -42,9 +46,9 @@ export function LoginForm({ next }: { next?: string }) {
 }
 
 export function SignupForm() {
-  const [state, action, pending] = useActionState<FormState, FormData>(signupAction, {});
+  const [state, action, pending, ready] = useFormAction<FormState>(signupAction, {});
   return (
-    <form onSubmit={submitKeepingValues(action)} className="space-y-4">
+    <form method="post" onSubmit={action} className="space-y-4">
       <div>
         <label className="label" htmlFor="name">שם מלא</label>
         <input id="name" name="name" autoComplete="name" required className="input" />
@@ -67,7 +71,7 @@ export function SignupForm() {
         <p className="mt-1 text-xs text-muted">לפחות {PASSWORD_MIN_LENGTH} תווים</p>
       </div>
       <FormError message={state.error} />
-      <button className="btn w-full" disabled={pending}>
+      <button className="btn w-full" disabled={pending || !ready}>
         {pending ? "נרשם..." : "יצירת חשבון"}
       </button>
       <p className="text-center text-sm text-muted">

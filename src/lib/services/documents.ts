@@ -177,3 +177,12 @@ export async function claimOriginal(organizationId: string, documentId: string, 
   }
   return claimed.length > 0;
 }
+
+export async function listDocumentEmails(organizationId: string, documentId: string) {
+  const db = await getDb();
+  return db
+    .select()
+    .from(schema.emailLog)
+    .where(and(eq(schema.emailLog.organizationId, organizationId), eq(schema.emailLog.documentId, documentId)))
+    .orderBy(desc(schema.emailLog.createdAt));
+}

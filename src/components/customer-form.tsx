@@ -1,9 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
 import type { FormState } from "@/app/actions";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 export interface CustomerValues {
   name: string;
@@ -23,9 +22,9 @@ export function CustomerForm({
   initial?: CustomerValues;
   submitLabel: string;
 }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(serverAction, {});
+  const [state, action, pending, ready] = useFormAction<FormState>(serverAction, {});
   return (
-    <form onSubmit={submitKeepingValues(action)} className="space-y-4">
+    <form method="post" onSubmit={action} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="name">שם הלקוח</label>
@@ -53,7 +52,7 @@ export function CustomerForm({
         הלקוח הוא עוסק מורשה / חברה
       </label>
       <FormError message={state.error} />
-      <button className="btn" disabled={pending}>
+      <button className="btn" disabled={pending || !ready}>
         {pending ? "שומר..." : submitLabel}
       </button>
     </form>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { addExpenseAction, type FormState } from "@/app/actions";
 import { parseShekels } from "@/lib/domain/money";
 import { splitGross } from "@/lib/domain/vat";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 export function ExpenseForm({
   categories,
@@ -28,7 +28,7 @@ export function ExpenseForm({
   const [vatTouched, setVatTouched] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   // אחרי הצלחה מאפסים את הטופס לרישום ההוצאה הבאה; אחרי שגיאה הערכים נשמרים
-  const [state, action, pending] = useActionState<FormState, FormData>(async (prev, formData) => {
+  const [state, action, pending, ready] = useFormAction<FormState>(async (prev, formData) => {
     const result = await addExpenseAction(prev, formData);
     if (result.ok) {
       formRef.current?.reset();
@@ -47,7 +47,7 @@ export function ExpenseForm({
   }
 
   return (
-    <form ref={formRef} onSubmit={submitKeepingValues(action)} className="space-y-4">
+    <form ref={formRef} method="post" onSubmit={action} className="space-y-4">
       {fromBank && <input type="hidden" name="bankTransactionId" value={fromBank.id} />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
@@ -125,7 +125,7 @@ export function ExpenseForm({
       )}
       <FormError message={state.error} />
       {state.ok && <p className="text-sm text-brand">ההוצאה נרשמה.</p>}
-      <button className="btn" disabled={pending}>
+      <button className="btn" disabled={pending || !ready}>
         {pending ? "שומר..." : "רישום הוצאה"}
       </button>
     </form>

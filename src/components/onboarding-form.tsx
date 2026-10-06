@@ -1,18 +1,18 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { createOrganizationAction, type FormState } from "@/app/actions";
 import { BUSINESS_TYPES, type BusinessType } from "@/lib/domain/business-types";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 export function OnboardingForm() {
-  const [state, action, pending] = useActionState<FormState, FormData>(createOrganizationAction, {});
+  const [state, action, pending, ready] = useFormAction<FormState>(createOrganizationAction, {});
   const [type, setType] = useState<BusinessType>("osek_murshe");
   const profile = BUSINESS_TYPES[type];
 
   return (
-    <form onSubmit={submitKeepingValues(action)} className="space-y-5">
+    <form method="post" onSubmit={action} className="space-y-5">
       <fieldset>
         <legend className="label">סוג העסק</legend>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -79,7 +79,7 @@ export function OnboardingForm() {
       </div>
 
       <FormError message={state.error} />
-      <button className="btn" disabled={pending}>
+      <button className="btn" disabled={pending || !ready}>
         {pending ? "יוצר..." : "יצירת העסק"}
       </button>
     </form>

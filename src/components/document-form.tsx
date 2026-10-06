@@ -1,11 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { issueDocumentAction, type FormState } from "@/app/actions";
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
 import { formatILS, parseShekels } from "@/lib/domain/money";
 import { FormError } from "./form-error";
-import { submitKeepingValues } from "./submit";
+import { useFormAction } from "./submit";
 
 interface Line {
   key: number;
@@ -34,7 +34,7 @@ export function DocumentForm({
   customers: SavedCustomer[];
   initialCustomerId?: string;
 }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(issueDocumentAction, {});
+  const [state, action, pending, ready] = useFormAction<FormState>(issueDocumentAction, {});
   const [type, setType] = useState<DocumentType>(allowedTypes[0]);
   const initial = customers.find((c) => c.id === initialCustomerId);
   const [customerId, setCustomerId] = useState(initial?.id ?? "");
@@ -62,7 +62,7 @@ export function DocumentForm({
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   return (
-    <form onSubmit={submitKeepingValues(action)} className="space-y-5">
+    <form method="post" onSubmit={action} className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="type">סוג מסמך</label>
@@ -226,7 +226,7 @@ export function DocumentForm({
       <p className="text-xs text-muted">
         מסמך שהופק לא ניתן למחיקה או לעריכה. לתיקון מפיקים חשבונית זיכוי.
       </p>
-      <button className="btn" disabled={pending}>
+      <button className="btn" disabled={pending || !ready}>
         {pending ? "מפיק..." : "הפקת המסמך"}
       </button>
     </form>

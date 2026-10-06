@@ -213,3 +213,35 @@ export const bankTransactions = pgTable(
     index("bank_tx_org_date").on(t.organizationId, t.date),
   ],
 );
+
+/** קישורי איפוס סיסמה. נשמר רק ה־hash של הטוקן, והוא בתוקף לזמן קצר */
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("password_reset_user").on(t.userId)],
+);
+
+/** תיעוד כל מייל שהמערכת שלחה (או סימלצה כשאין ספק מוגדר) */
+export const emailLog = pgTable(
+  "email_log",
+  {
+    id: id(),
+    organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id").references(() => documents.id),
+    to: text("to").notNull(),
+    subject: text("subject").notNull(),
+    /** sent | simulated | failed */
+    status: text("status").notNull(),
+    providerId: text("provider_id"),
+    error: text("error"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("email_log_org").on(t.organizationId, t.createdAt), index("email_log_document").on(t.documentId)],
+);

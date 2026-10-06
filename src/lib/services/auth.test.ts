@@ -3,7 +3,9 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { can } from "@/lib/domain/permissions";
 import {
   authenticate,
+  createPasswordReset,
   createSession,
+  resetPassword,
   deleteSession,
   registerUser,
   setActiveOrganization,
@@ -107,5 +109,31 @@ describe("memberships", () => {
     const { token } = await createSession(u.id);
     await setActiveOrganization(token, org.id);
     expect((await validateSession(token))?.session.activeOrganizationId).toBe(org.id);
+  });
+});
+
+describe("password reset", () => {
+  it("resets once, logs out everywhere and unlocks the account", async () => {
+    const u = await registerUser({ email: "reset@example.com", name: "x", password: PASSWORD });
+    const { token: sessionToken } = await createSession(u.id);
+    for (let i = 0; i < 5; i++) await authenticate("reset@example.com", "wrong password").catch(() => {});
+
+    expect(await createPasswordReset("nobody@example.com")).toBeNull();
+    const reset = await createPasswordReset("RESET@example.com");
+    expect(reset?.user.id).toBe(u.id);
+
+    await expect(resetPassword(reset!.token, "short")).rejects.toThrow(/לפחות/);
+    await resetPassword(reset!.token, "a brand new password");
+    await expect(resetPassword(reset!.token, "another new password")).rejects.toThrow(/פג תוקפו/);
+
+    expect(await validateSession(sessionToken)).toBeNull();
+    expect((await authenticate("reset@example.com", "a brand new password")).id).toBe(u.id);
+    await expect(authenticate("reset@example.com", PASSWORD)).rejects.toThrow("אימייל או סיסמה שגויים");
+  });
+
+  it("limits reset requests per hour", async () => {
+    await registerUser({ email: "flood@example.com", name: "x", password: PASSWORD });
+    for (let i = 0; i < 3; i++) expect(await createPasswordReset("flood@example.com")).not.toBeNull();
+    expect(await createPasswordReset("flood@example.com")).toBeNull();
   });
 });
