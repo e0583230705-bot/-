@@ -56,13 +56,15 @@ export default async function EngagementPage({ params, searchParams }: PageProps
         </p>
       </div>
 
+      <SourcePanel engagement={e} />
+
       <div className="grid gap-4 lg:grid-cols-2">
         {write && (
           <div className="card space-y-2">
             <h2 className="font-bold">קליטת ספרי הלקוח</h2>
             <p className="text-xs text-muted">
-              כרטסת הנהלת חשבונות בקובץ CSV מתוכנת הנהלת החשבונות של הלקוח (תאריך, מספר תנועה, חשבון, חובה, זכות).
-              קליטה חוזרת מחליפה את הנתונים.
+              מומלץ: <strong>קובץ במבנה אחיד</strong> — בחרו יחד את BKMVDATA.TXT ו־INI.TXT מספריית OPENFRMT שהופקה
+              בתוכנה של הלקוח. אפשר גם כרטסת הנהלת חשבונות בקובץ CSV. קליטה חוזרת מחליפה את הנתונים.
             </p>
             <LedgerImportForm action={importLedgerAction.bind(null, e.id)} />
           </div>
@@ -358,6 +360,58 @@ function SampleTab({
       <p className="text-xs text-muted">
         המדגם נקבע לפי ה־seed ולכן ניתן לשחזור מלא בתיק הביקורת. כל דגימה מחדש נרשמת ביומן הפעולות.
       </p>
+    </div>
+  );
+}
+
+interface SourceMeta {
+  businessTaxId: string;
+  businessName: string | null;
+  softwareName: string | null;
+  softwareRegistration: string | null;
+  rangeFrom: string | null;
+  rangeTo: string | null;
+}
+
+function SourcePanel({ engagement: e }: { engagement: Data["engagement"] }) {
+  if (!e.importedAt) return null;
+  const meta = e.sourceMeta as SourceMeta | null;
+  const issues = (e.importIssues as { severity: "error" | "warning"; message: string }[] | null) ?? [];
+  return (
+    <div className="card space-y-2 text-sm">
+      <h2 className="font-bold">מקור הנתונים</h2>
+      {e.sourceType === "uniform" && meta ? (
+        <p className="text-muted">
+          קובץ במבנה אחיד
+          {meta.softwareName && <> · תוכנה: {meta.softwareName}</>}
+          {meta.softwareRegistration && (
+            <>
+              {" "}
+              (רישום <span className="num">{meta.softwareRegistration}</span>)
+            </>
+          )}
+          {meta.businessName && <> · {meta.businessName}</>} · עוסק <span className="num">{meta.businessTaxId}</span>
+          {meta.rangeFrom && meta.rangeTo && (
+            <>
+              {" "}
+              · תקופה <span className="num">{formatDate(meta.rangeFrom)}</span>–<span className="num">{formatDate(meta.rangeTo)}</span>
+            </>
+          )}
+        </p>
+      ) : (
+        <p className="text-muted">כרטסת הנהלת חשבונות (CSV)</p>
+      )}
+      {issues.length === 0 ? (
+        <p className="text-brand">{e.sourceType === "uniform" ? "בדיקות שלמות הקובץ עברו ללא ממצאים." : "הקובץ נקלט."}</p>
+      ) : (
+        <ul className="space-y-1">
+          {issues.map((i) => (
+            <li key={i.message} className={i.severity === "error" ? "text-danger" : "text-warn"}>
+              {i.severity === "error" ? "✕" : "⚠"} {i.message}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

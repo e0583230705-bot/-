@@ -296,6 +296,11 @@ export const auditEngagements = pgTable(
     materialityPct: doublePrecision("materiality_pct"),
     sampleSeed: integer("sample_seed").notNull(),
     sourceFilename: text("source_filename"),
+    /** מקור הנתונים: csv | uniform; ולמבנה אחיד — פרטי התוכנה, העסק והתקופה מתוך INI.TXT */
+    sourceType: text("source_type"),
+    sourceMeta: jsonb("source_meta"),
+    /** בעיות שלמות שנמצאו בקבצים עצמם */
+    importIssues: jsonb("import_issues"),
     importedAt: timestamp("imported_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
@@ -313,6 +318,10 @@ export const auditAccounts = pgTable(
     code: text("code").notNull(),
     name: text("name").notNull(),
     openingBalance: integer("opening_balance").notNull().default(0),
+    /** מהמבנה האחיד: קוד וקבוצה במאזן הבוחן, וקוד סיווג חשבונאי (טופס 6111) */
+    trialBalanceCode: text("trial_balance_code"),
+    trialBalanceName: text("trial_balance_name"),
+    classification: text("classification"),
   },
   (t) => [uniqueIndex("audit_accounts_engagement_code").on(t.engagementId, t.code)],
 );

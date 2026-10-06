@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registerUser } from "./auth";
 import { createOrganization } from "./organizations";
+import { buildFile, encode1255, OSEK } from "@/test/uniform-fixture";
 import {
   createEngagement,
   getEngagement,
@@ -33,13 +34,33 @@ describe("audit engagements", () => {
     const e = await createEngagement(org.id, user.id, { clientName: "לקוח בע\"מ", clientTaxId: "515555555", fiscalYear: 2026 });
     expect(e.yearEnd).toBe("2026-12-31");
 
-    expect(await importLedger(org.id, e.id, { name: "gl.csv", bytes: enc(LEDGER) })).toEqual({ accounts: 3, lines: 3, skipped: 0 });
+    expect(await importLedger(org.id, e.id, { name: "gl.csv", bytes: enc(LEDGER) })).toMatchObject({
+      accounts: 3,
+      lines: 3,
+      skipped: 0,
+      sourceType: "csv",
+    });
     // קליטה חוזרת מחליפה ולא מכפילה
     await importLedger(org.id, e.id, { name: "gl2.csv", bytes: enc(LEDGER) });
     const loaded = await loadEngagementLedger(org.id, e.id);
     expect(loaded?.lines).toHaveLength(3);
     expect(loaded?.engagement.sourceFilename).toBe("gl2.csv");
     expect((await listEngagements(org.id))[0].lineCount).toBe(3);
+  });
+
+  it("imports uniform-format files and records integrity issues and the client mismatch", async () => {
+    const { user, org } = await firm("audit5@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", clientTaxId: "123456782", fiscalYear: 2025 });
+    await expect(importLedger(org.id, e.id, [{ name: "INI.TXT", bytes: encode1255("A000") }])).rejects.toThrow(/BKMVDATA/);
+    const r = await importLedger(org.id, e.id, [{ name: "BKMVDATA.TXT", bytes: encode1255(buildFile({ declared: 99 })) }]);
+    expect(r).toMatchObject({ sourceType: "uniform", accounts: 3, lines: 3 });
+    const messages = r.issues.map((i) => i.message).join(" | ");
+    expect(messages).toMatch(new RegExp(`מספר העוסק בקובץ \\(${OSEK}\\)`));
+    expect(messages).toMatch(/מצהירה על 99/);
+    expect(messages).toMatch(/לא נבחר INI.TXT/);
+    const loaded = await loadEngagementLedger(org.id, e.id);
+    expect(loaded?.engagement.sourceType).toBe("uniform");
+    expect(loaded?.lines.map((l) => l.amount)).toEqual([118000, -100000, -18000]);
   });
 
   it("validates materiality and records sample redraws", async () => {

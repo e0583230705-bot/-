@@ -423,13 +423,18 @@ export async function importLedgerAction(engagementId: string, _: FormState, for
   let message: string;
   try {
     const { org } = await requirePermission("write_books");
-    const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ" };
-    const r = await importLedger(org.id, uuid.parse(engagementId), {
-      name: file.name,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    });
-    message = `נקלטו ${r.lines.toLocaleString("he-IL")} שורות פקודה ב־${r.accounts} חשבונות` + (r.skipped ? ` (${r.skipped} שורות דולגו)` : "");
+    const files = formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "יש לבחור קובץ" };
+    const r = await importLedger(
+      org.id,
+      uuid.parse(engagementId),
+      await Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))),
+    );
+    message =
+      `נקלטו ${r.lines.toLocaleString("he-IL")} שורות פקודה ב־${r.accounts} חשבונות` +
+      (r.sourceType === "uniform" ? " מקובץ מבנה אחיד" : "") +
+      (r.skipped ? ` (${r.skipped} שורות דולגו)` : "") +
+      (r.issues.length ? ` · נמצאו ${r.issues.length} בעיות בקבצים` : "");
   } catch (e) {
     return errorMessage(e);
   }

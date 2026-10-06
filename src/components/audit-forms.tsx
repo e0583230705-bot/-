@@ -40,13 +40,14 @@ export function LedgerImportForm({ action: serverAction }: { action: (s: FormSta
         <input
           type="file"
           name="file"
-          accept=".csv,text/csv,text/plain"
+          accept=".csv,.txt,text/csv,text/plain"
+          multiple
           required
-          aria-label="קובץ כרטסת"
+          aria-label="קובצי הנהלת החשבונות"
           className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
         />
         <button className="btn" disabled={pending || !ready}>
-          {pending ? "קולט..." : "קליטת כרטסת"}
+          {pending ? "קולט..." : "קליטת הנתונים"}
         </button>
       </div>
       <FormError message={state.error} />

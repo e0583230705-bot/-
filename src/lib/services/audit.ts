@@ -4,6 +4,14 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { decodeBankFile } from "@/lib/domain/bank/parse";
 import { parseLedgerCsv } from "@/lib/domain/ledger/import-csv";
+import {
+  crossCheckIni,
+  decodeUniform,
+  parseBkmvdata,
+  parseIni,
+  type IniInfo,
+  type UniformIssue,
+} from "@/lib/domain/ledger/uniform-format";
 import { MATERIALITY_BASES, type MaterialityBasis } from "@/lib/domain/ledger/materiality";
 import type { LedgerAccount, LedgerLine } from "@/lib/domain/ledger/types";
 import { isValidIsraeliId } from "@/lib/domain/israeli-id";
@@ -69,22 +77,101 @@ export async function getEngagement(organizationId: string, id: string) {
   return engagement ?? null;
 }
 
-/** קליטת כרטסת לתיק. קליטה חוזרת מחליפה את הנתונים הקודמים (למשל אחרי תיקונים של הלקוח) */
-export async function importLedger(organizationId: string, engagementId: string, file: { name: string; bytes: Uint8Array }) {
+const startsWith = (bytes: Uint8Array, code: string) =>
+  bytes.byteLength >= 4 && String.fromCharCode(...bytes.subarray(0, 4)) === code;
+
+type ImportedAccount = LedgerAccount & { trialBalanceCode?: string; trialBalanceName?: string; classification?: string };
+
+/** מזהה את סוג הקבצים לפי התוכן: INI.TXT מתחיל ב־A000, BKMVDATA.TXT ב־A100, אחרת — כרטסת CSV */
+function parseLedgerFiles(files: { name: string; bytes: Uint8Array }[]) {
+  const iniFile = files.find((f) => startsWith(f.bytes, "A000"));
+  const bkmvFile = files.find((f) => startsWith(f.bytes, "A100"));
+  if (iniFile && !bkmvFile) throw new ValidationError("נבחר INI.TXT בלבד — יש לבחור גם את BKMVDATA.TXT מאותה ספרייה");
+  if (bkmvFile) {
+    const ini: IniInfo | null = iniFile ? parseIni(decodeUniform(iniFile.bytes)) : null;
+    const bkmv = parseBkmvdata(decodeUniform(bkmvFile.bytes, ini?.charset ?? undefined));
+    const issues: UniformIssue[] = [...bkmv.issues, ...(ini ? crossCheckIni(ini, bkmv) : [])];
+    if (!ini) issues.push({ severity: "warning", message: "לא נבחר INI.TXT — לא ניתן לאמת את סיכומי הרשומות" });
+    return {
+      sourceType: "uniform" as const,
+      filename: [bkmvFile.name, iniFile?.name].filter(Boolean).join(" + "),
+      accounts: bkmv.accounts as ImportedAccount[],
+      lines: bkmv.lines.map((l) => ({
+        entryId: l.entryId,
+        date: l.date,
+        accountCode: l.accountCode,
+        amount: l.amount,
+        description: l.description,
+        reference: l.reference,
+      })),
+      skipped: 0,
+      issues,
+      meta: {
+        businessTaxId: bkmv.businessTaxId,
+        businessName: ini?.businessName ?? null,
+        softwareName: ini?.softwareName ?? null,
+        softwareRegistration: ini?.softwareRegistration ?? null,
+        rangeFrom: ini?.rangeFrom ?? null,
+        rangeTo: ini?.rangeTo ?? null,
+        counts: bkmv.counts,
+      },
+    };
+  }
+  if (files.length !== 1) throw new ValidationError("יש לבחור קובץ כרטסת אחד, או את שני קבצי המבנה האחיד");
+  const csv = parseLedgerCsv(decodeBankFile(files[0].bytes));
+  return {
+    sourceType: "csv" as const,
+    filename: files[0].name,
+    accounts: csv.accounts as ImportedAccount[],
+    lines: csv.lines,
+    skipped: csv.skipped,
+    issues: [] as UniformIssue[],
+    meta: null,
+  };
+}
+
+/**
+ * קליטת ספרי הלקוח לתיק: קבצי מבנה אחיד (BKMVDATA.TXT + INI.TXT) או כרטסת CSV.
+ * קליטה חוזרת מחליפה את הנתונים הקודמים (למשל אחרי תיקונים של הלקוח).
+ */
+export async function importLedger(
+  organizationId: string,
+  engagementId: string,
+  input: { name: string; bytes: Uint8Array } | { name: string; bytes: Uint8Array }[],
+) {
+  const files = Array.isArray(input) ? input : [input];
   const engagement = await getEngagement(organizationId, engagementId);
   if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
-  if (file.bytes.byteLength === 0) throw new ValidationError("הקובץ ריק");
-  if (file.bytes.byteLength > MAX_LEDGER_BYTES) throw new ValidationError("הקובץ גדול מדי (עד 30MB)");
+  if (files.length === 0 || files.some((f) => f.bytes.byteLength === 0)) throw new ValidationError("הקובץ ריק");
+  if (files.reduce((s, f) => s + f.bytes.byteLength, 0) > MAX_LEDGER_BYTES) {
+    throw new ValidationError("הקבצים גדולים מדי (עד 30MB)");
+  }
 
-  const { accounts, lines, skipped } = parseLedgerCsv(decodeBankFile(file.bytes));
+  const parsed = parseLedgerFiles(files);
+  const { accounts, lines, skipped } = parsed;
+  const issues = [...parsed.issues];
+  if (parsed.meta && engagement.clientTaxId && parsed.meta.businessTaxId.replace(/^0+/, "") !== engagement.clientTaxId.replace(/^0+/, "")) {
+    issues.unshift({
+      severity: "error",
+      message: `מספר העוסק בקובץ (${parsed.meta.businessTaxId}) שונה ממספר הח.פ. של הלקוח בתיק (${engagement.clientTaxId})`,
+    });
+  }
   const db = await getDb();
   await db.transaction(async (tx) => {
     await tx.delete(schema.auditLines).where(eq(schema.auditLines.engagementId, engagement.id));
     await tx.delete(schema.auditAccounts).where(eq(schema.auditAccounts.engagementId, engagement.id));
     for (let i = 0; i < accounts.length; i += 1000) {
-      await tx
-        .insert(schema.auditAccounts)
-        .values(accounts.slice(i, i + 1000).map((a) => ({ engagementId: engagement.id, ...a })));
+      await tx.insert(schema.auditAccounts).values(
+        accounts.slice(i, i + 1000).map((a) => ({
+          engagementId: engagement.id,
+          code: a.code,
+          name: a.name,
+          openingBalance: a.openingBalance,
+          trialBalanceCode: a.trialBalanceCode || null,
+          trialBalanceName: a.trialBalanceName || null,
+          classification: a.classification || null,
+        })),
+      );
     }
     for (let i = 0; i < lines.length; i += 1000) {
       await tx
@@ -93,17 +180,23 @@ export async function importLedger(organizationId: string, engagementId: string,
     }
     await tx
       .update(schema.auditEngagements)
-      .set({ sourceFilename: file.name.slice(0, 200), importedAt: new Date() })
+      .set({
+        sourceFilename: parsed.filename.slice(0, 200),
+        sourceType: parsed.sourceType,
+        sourceMeta: parsed.meta,
+        importIssues: issues,
+        importedAt: new Date(),
+      })
       .where(eq(schema.auditEngagements.id, engagement.id));
     await tx.insert(schema.auditLog).values({
       organizationId,
       action: "import_ledger",
       entity: "audit_engagement",
       entityId: engagement.id,
-      data: { filename: file.name, accounts: accounts.length, lines: lines.length, skipped },
+      data: { filename: parsed.filename, source: parsed.sourceType, accounts: accounts.length, lines: lines.length, skipped, issues: issues.length },
     });
   });
-  return { accounts: accounts.length, lines: lines.length, skipped };
+  return { accounts: accounts.length, lines: lines.length, skipped, sourceType: parsed.sourceType, issues };
 }
 
 export async function loadEngagementLedger(organizationId: string, engagementId: string) {
