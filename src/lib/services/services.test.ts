@@ -141,3 +141,26 @@ describe("services (in-memory Postgres)", () => {
     ).rejects.toThrow(/קטגוריה/);
   });
 });
+
+describe("known suppliers", async () => {
+  const { listKnownSuppliers } = await import("./expenses");
+  it("remembers the latest category per supplier and keeps a tax id once seen", async () => {
+    const org = await createOrganization({
+      ownerUserId: (await newUser()).id,
+      name: "ספקים",
+      businessType: "osek_murshe",
+      taxId: "123456782",
+    });
+    const cats = await listCategories(org.id);
+    const vehicle = cats.find((c) => c.key === "vehicle")!;
+    const office = cats.find((c) => c.key === "office_supplies")!;
+    const add = (date: string, supplierName: string, categoryId: string, supplierTaxId?: string) =>
+      addExpense({ organizationId: org.id, date, supplierName, categoryId, supplierTaxId, gross: 1180, vat: 180 });
+    await add("2026-01-01", "פז", office.id, "515555555");
+    await add("2026-02-01", " פז ", vehicle.id);
+    await add("2026-02-02", "אופיס דיפו", office.id);
+    const known = await listKnownSuppliers(org.id);
+    expect(known).toHaveLength(2);
+    expect(known.find((s) => s.name.trim() === "פז")).toMatchObject({ categoryId: vehicle.id, supplierTaxId: "515555555" });
+  });
+});

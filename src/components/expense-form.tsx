@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { addExpenseAction, type FormState } from "@/app/actions";
 import { parseShekels } from "@/lib/domain/money";
 import { splitGross } from "@/lib/domain/vat";
+import { normalizeSupplierName, type KnownSupplier } from "@/lib/domain/suppliers";
 import { FormError } from "./form-error";
 import { useFormAction } from "./submit";
 
@@ -26,6 +27,7 @@ export function ExpenseForm({
   canDeductVat,
   today,
   prefill = {},
+  suppliers = [],
 }: {
   categories: { id: string; label: string }[];
   vatRate: number;
@@ -33,6 +35,8 @@ export function ExpenseForm({
   today: string;
   /** מילוי מראש — מתנועת בנק או מקבלה סרוקה. סכומים באגורות */
   prefill?: ExpensePrefill;
+  /** ספקים שהעסק כבר רשם — להשלמה אוטומטית של קטגוריה ומספר עוסק */
+  suppliers?: KnownSupplier[];
 }) {
   const initialGross = prefill.gross !== undefined ? (prefill.gross / 100).toFixed(2) : "";
   const initialVat =
@@ -45,11 +49,28 @@ export function ExpenseForm({
   const [vat, setVat] = useState(initialVat);
   const [vatTouched, setVatTouched] = useState(prefill.vat !== undefined);
   const formRef = useRef<HTMLFormElement>(null);
+  const [categoryId, setCategoryId] = useState(prefill.categoryId ?? "");
+  const [categoryTouched, setCategoryTouched] = useState(Boolean(prefill.categoryId));
+  const [supplierTaxId, setSupplierTaxId] = useState(prefill.supplierTaxId ?? "");
+  const [learnedFrom, setLearnedFrom] = useState<string | null>(null);
+
+  function onSupplierChange(value: string) {
+    // רק התאמה מלאה לשם — בזמן הקלדה לא מנחשים לפי חלק מהשם
+    const known = suppliers.find((s) => normalizeSupplierName(s.name) === normalizeSupplierName(value));
+    if (!known) return setLearnedFrom(null);
+    if (!categoryTouched) setCategoryId(known.categoryId);
+    if (!supplierTaxId && known.supplierTaxId) setSupplierTaxId(known.supplierTaxId);
+    setLearnedFrom(known.name);
+  }
   // אחרי הצלחה מאפסים את הטופס לרישום ההוצאה הבאה; אחרי שגיאה הערכים נשמרים
   const [state, action, pending, ready] = useFormAction<FormState>(async (prev, formData) => {
     const result = await addExpenseAction(prev, formData);
     if (result.ok) {
       formRef.current?.reset();
+      setCategoryId("");
+      setCategoryTouched(false);
+      setSupplierTaxId("");
+      setLearnedFrom(null);
       setGross("");
       setVat("");
       setVatTouched(false);
@@ -79,13 +100,34 @@ export function ExpenseForm({
             id="supplierName"
             name="supplierName"
             defaultValue={prefill.supplierName}
+            onChange={(e) => onSupplierChange(e.target.value)}
+            list="known-suppliers"
+            autoComplete="off"
             required
             className="input"
           />
+          <datalist id="known-suppliers">
+            {suppliers.map((s) => (
+              <option key={s.name} value={s.name} />
+            ))}
+          </datalist>
+          {learnedFrom && (
+            <p className="mt-1 text-xs text-brand">ספק מוכר: הקטגוריה ומספר העוסק מולאו מההוצאה הקודמת</p>
+          )}
         </div>
         <div>
           <label className="label" htmlFor="categoryId">קטגוריה</label>
-          <select id="categoryId" name="categoryId" required className="input" defaultValue={prefill.categoryId ?? ""}>
+          <select
+            id="categoryId"
+            name="categoryId"
+            required
+            className="input"
+            value={categoryId}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              setCategoryTouched(true);
+            }}
+          >
             <option value="" disabled>
               בחירה...
             </option>
@@ -140,7 +182,8 @@ export function ExpenseForm({
           <input
             id="supplierTaxId"
             name="supplierTaxId"
-            defaultValue={prefill.supplierTaxId}
+            value={supplierTaxId}
+            onChange={(e) => setSupplierTaxId(e.target.value)}
             inputMode="numeric"
             className="input num"
           />

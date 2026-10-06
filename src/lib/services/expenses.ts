@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ISODate } from "@/lib/domain/vat";
+import { normalizeSupplierName, type KnownSupplier } from "@/lib/domain/suppliers";
 import { getOrganization, ValidationError } from "./organizations";
 
 export interface NewExpense {
@@ -117,4 +118,28 @@ export async function listCategories(organizationId: string) {
     .from(schema.expenseCategories)
     .where(eq(schema.expenseCategories.organizationId, organizationId))
     .orderBy(asc(schema.expenseCategories.label));
+}
+
+/** הספקים שהעסק כבר רשם, כל אחד עם הקטגוריה ומספר העוסק מההוצאה האחרונה שלו */
+export async function listKnownSuppliers(organizationId: string): Promise<KnownSupplier[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({
+      name: schema.expenses.supplierName,
+      categoryId: schema.expenses.categoryId,
+      supplierTaxId: schema.expenses.supplierTaxId,
+    })
+    .from(schema.expenses)
+    .where(eq(schema.expenses.organizationId, organizationId))
+    .orderBy(desc(schema.expenses.date), desc(schema.expenses.createdAt))
+    .limit(2000);
+  const seen = new Map<string, KnownSupplier>();
+  for (const r of rows) {
+    const key = normalizeSupplierName(r.name);
+    const existing = seen.get(key);
+    if (!existing) seen.set(key, { ...r });
+    // מספר עוסק שנרשם פעם אחת נשמר גם אם בהוצאה האחרונה לא מילאו אותו
+    else if (!existing.supplierTaxId && r.supplierTaxId) existing.supplierTaxId = r.supplierTaxId;
+  }
+  return [...seen.values()];
 }

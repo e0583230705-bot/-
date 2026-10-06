@@ -148,3 +148,24 @@ describe("annual breakdowns", async () => {
     expect(rows[1].recognized).toBe(14310);
   });
 });
+
+describe("supplier memory", async () => {
+  const { findKnownSupplier, normalizeSupplierName } = await import("./suppliers");
+  const suppliers = [
+    { name: "פז", categoryId: "vehicle", supplierTaxId: "515555555" },
+    { name: "אופיס דיפו בע\"מ", categoryId: "office", supplierTaxId: null },
+    { name: "Google", categoryId: "software", supplierTaxId: null },
+  ];
+  it("normalizes names", () => {
+    expect(normalizeSupplierName(' אופיס-דיפו  בע"מ ')).toBe("אופיס דיפו");
+    expect(normalizeSupplierName("Google Ltd.")).toBe("google");
+  });
+  it("finds suppliers by exact name or as a whole word inside a bank description", () => {
+    expect(findKnownSupplier("אופיס דיפו", suppliers)?.categoryId).toBe("office");
+    expect(findKnownSupplier("פז חברת נפט בע\"מ", suppliers)?.categoryId).toBe("vehicle");
+    expect(findKnownSupplier("GOOGLE*WORKSPACE", suppliers)?.categoryId).toBe("software");
+    // "פז" כחלק ממילה אחרת אינו התאמה
+    expect(findKnownSupplier("פזורה", suppliers)).toBeNull();
+    expect(findKnownSupplier("", suppliers)).toBeNull();
+  });
+});

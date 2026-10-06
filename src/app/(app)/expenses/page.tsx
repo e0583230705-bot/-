@@ -1,5 +1,6 @@
 import { getContext } from "@/lib/auth/dal";
-import { listCategories, listExpenses } from "@/lib/services/expenses";
+import { listCategories, listExpenses, listKnownSuppliers } from "@/lib/services/expenses";
+import { findKnownSupplier } from "@/lib/domain/suppliers";
 import { getBankTransaction } from "@/lib/services/bank";
 import { getPendingReceipt, receiptsForExpenses } from "@/lib/services/receipts";
 import { aiConfigured } from "@/lib/ai/receipt";
@@ -18,14 +19,26 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
   const tx = isId(fromTx) ? await getBankTransaction(org.id, fromTx) : null;
   const receipt = isId(receiptParam) ? await getPendingReceipt(org.id, receiptParam, today) : null;
 
+  const suppliers = await listKnownSuppliers(org.id);
+
   let prefill: ExpensePrefill | undefined;
   if (tx && tx.amount < 0 && tx.status === "unmatched") {
-    prefill = { bankTransactionId: tx.id, date: tx.date, supplierName: tx.description, gross: -tx.amount };
+    const known = findKnownSupplier(tx.description, suppliers);
+    prefill = {
+      bankTransactionId: tx.id,
+      date: tx.date,
+      supplierName: known?.name ?? tx.description,
+      supplierTaxId: known?.supplierTaxId ?? undefined,
+      categoryId: known?.categoryId,
+      gross: -tx.amount,
+    };
   } else if (receipt) {
     const p = receipt.prefill;
+    // היסטוריית הספק אמינה יותר מניחוש הקטגוריה של ה־AI
+    const known = p.supplierName ? findKnownSupplier(p.supplierName, suppliers) : null;
     prefill = {
       receiptId: receipt.id,
-      categoryId: receipt.categoryId,
+      categoryId: known?.categoryId ?? receipt.categoryId,
       date: p.date,
       supplierName: p.supplierName,
       supplierTaxId: p.supplierTaxId,
@@ -79,6 +92,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
           canDeductVat={profile.chargesVat}
           today={today}
           prefill={prefill}
+          suppliers={suppliers}
           key={prefill?.receiptId ?? prefill?.bankTransactionId ?? "new"}
         />
       </div>
