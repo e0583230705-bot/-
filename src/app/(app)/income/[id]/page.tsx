@@ -2,12 +2,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { documentHtml, loadDocumentForPrint } from "@/lib/pdf/document-pdf";
 import { documentTitle } from "@/lib/pdf/document-html";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayISO } from "@/lib/format";
+import { paymentStatus, PAYMENT_FOR } from "@/lib/domain/receivables";
+import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/documents";
+import { PaymentBadge } from "@/components/payment-badge";
+import { BUSINESS_TYPES, type BusinessType } from "@/lib/domain/business-types";
+import { MarkPaidForm } from "@/components/mark-paid-form";
 import { listDocumentEmails } from "@/lib/services/documents";
 import { getCustomer } from "@/lib/services/customers";
 import { emailConfigured } from "@/lib/email/send";
 import { SendDocumentForm } from "@/components/send-document-form";
-import { sendDocumentAction } from "../../../actions";
+import { markPaidAction, markUnpaidAction, sendDocumentAction } from "../../../actions";
+
+const PAID_VIA: Record<string, string> = { bank: "לפי תנועת בנק", receipt: "לפי קבלה", manual: "סימון ידני" };
+
+function profileAllows(businessType: string, type: DocumentType) {
+  return (BUSINESS_TYPES[businessType as BusinessType]?.allowedDocuments ?? []).includes(type);
+}
 
 const EMAIL_STATUS: Record<string, string> = { sent: "נשלח", simulated: "לא נשלח (אין שירות מיילים)", failed: "נכשל" };
 
@@ -19,6 +30,13 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
   const html = await documentHtml(loaded, "preview");
   const originalDelivered = Boolean(doc.originalDeliveredAt);
   const willBeOriginal = !originalDelivered && ctx.can("write_books");
+  const today = todayISO();
+  const status = paymentStatus(doc, today);
+  const paymentDocType = Object.entries(PAYMENT_FOR).find(([, payable]) => payable === doc.type)?.[0] as
+    | DocumentType
+    | undefined;
+  const canIssuePayment =
+    paymentDocType && ctx.can("write_books") && profileAllows(ctx.org.businessType, paymentDocType);
   const [emails, customer] = await Promise.all([
     listDocumentEmails(ctx.org.id, doc.id),
     doc.customerId ? getCustomer(ctx.org.id, doc.customerId) : null,
@@ -40,6 +58,35 @@ export default async function DocumentPage({ params }: PageProps<"/income/[id]">
           {willBeOriginal ? "הורדת המקור (PDF)" : "הורדת העתק (PDF)"}
         </a>
       </div>
+
+      {status && (
+        <div className="card space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-bold">תשלום</h2>
+            <PaymentBadge status={status} />
+            {status.kind === "paid" && (
+              <span className="text-sm text-muted">
+                <span className="num">{formatDate(status.on)}</span> · {PAID_VIA[doc.paidVia ?? ""] ?? ""}
+              </span>
+            )}
+          </div>
+          {status.kind !== "paid" && ctx.can("write_books") && (
+            <div className="flex flex-wrap items-start gap-4">
+              {canIssuePayment && (
+                <Link href={`/income/new?for=${doc.id}`} className="btn">
+                  הפקת {DOCUMENT_TYPES[paymentDocType!].label}
+                </Link>
+              )}
+              <MarkPaidForm action={markPaidAction.bind(null, doc.id)} today={today} />
+            </div>
+          )}
+          {status.kind === "paid" && doc.paidVia === "manual" && ctx.can("write_books") && (
+            <form action={markUnpaidAction.bind(null, doc.id)}>
+              <button className="text-xs text-muted hover:text-danger">ביטול סימון התשלום</button>
+            </form>
+          )}
+        </div>
+      )}
 
       {doc.allocationRequired && !doc.allocationNumber && (
         <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">

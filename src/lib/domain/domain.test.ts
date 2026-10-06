@@ -169,3 +169,27 @@ describe("supplier memory", async () => {
     expect(findKnownSupplier("", suppliers)).toBeNull();
   });
 });
+
+describe("receivables", async () => {
+  const { paymentStatus, summarizeReceivables } = await import("./receivables");
+  const today = "2026-10-06";
+  it("classifies payment status", () => {
+    expect(paymentStatus({ type: "tax_invoice", issueDate: "2026-09-20", paidAt: null }, today)).toEqual({ kind: "open", days: 16 });
+    expect(paymentStatus({ type: "tax_invoice", issueDate: "2026-08-01", paidAt: null }, today)).toEqual({ kind: "overdue", days: 66 });
+    expect(paymentStatus({ type: "proforma", issueDate: "2026-08-01", paidAt: "2026-08-10" }, today)).toEqual({ kind: "paid", on: "2026-08-10" });
+    expect(paymentStatus({ type: "tax_invoice_receipt", issueDate: "2026-08-01", paidAt: null }, today)).toBeNull();
+  });
+  it("sums open and overdue amounts", () => {
+    expect(
+      summarizeReceivables(
+        [
+          { type: "tax_invoice", issueDate: "2026-09-20", paidAt: null, gross: 1000 },
+          { type: "tax_invoice", issueDate: "2026-07-01", paidAt: null, gross: 500 },
+          { type: "tax_invoice", issueDate: "2026-07-01", paidAt: "2026-07-05", gross: 999 },
+          { type: "receipt", issueDate: "2026-07-01", paidAt: null, gross: 777 },
+        ],
+        today,
+      ),
+    ).toEqual({ open: 1500, openCount: 2, overdue: 500, overdueCount: 1 });
+  });
+});

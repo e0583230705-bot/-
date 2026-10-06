@@ -16,7 +16,7 @@ import { passwordResetEmail } from "@/lib/email/templates";
 import { sendDocumentToCustomer } from "@/lib/email/send-document";
 import { addMember, ForbiddenError, getRole, removeMember } from "@/lib/services/members";
 import { createOrganization, ValidationError } from "@/lib/services/organizations";
-import { issueDocument } from "@/lib/services/documents";
+import { issueDocument, markDocumentPaid, markDocumentUnpaid } from "@/lib/services/documents";
 import { addExpense } from "@/lib/services/expenses";
 import { createCustomer, updateCustomer } from "@/lib/services/customers";
 import { uploadReceipt } from "@/lib/services/receipts";
@@ -144,6 +144,7 @@ const documentSchema = z.object({
   type: z.enum(["proforma", "tax_invoice", "tax_invoice_receipt", "credit_note", "receipt", "donation_receipt"]),
   issueDate: date,
   customerId: z.union([z.uuid(), z.literal("")]).optional(),
+  relatedDocumentId: z.union([z.uuid(), z.literal("")]).optional(),
   saveCustomer: z.literal("on").optional(),
   customerName: z.string().trim().min(1, "חסר שם לקוח"),
   customerTaxId: z.string().trim().optional(),
@@ -180,6 +181,7 @@ export async function issueDocumentAction(_: FormState, formData: FormData): Pro
       type: input.type,
       issueDate: input.issueDate,
       saveCustomer: input.saveCustomer === "on",
+      relatedDocumentId: input.relatedDocumentId || undefined,
       customer: {
         id: input.customerId || undefined,
         name: input.customerName,
@@ -374,4 +376,26 @@ export async function scanReceiptAction(_: FormState, formData: FormData): Promi
     return errorMessage(e);
   }
   redirect(target);
+}
+
+export async function markPaidAction(documentId: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org, user } = await requirePermission("write_books");
+    await markDocumentPaid(org.id, uuid.parse(documentId), date.parse(formData.get("paidAt")), user.id);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function markUnpaidAction(documentId: string) {
+  const { org, user } = await requirePermission("write_books");
+  try {
+    await markDocumentUnpaid(org.id, uuid.parse(documentId), user.id);
+  } catch (e) {
+    unstable_rethrow(e);
+    if (!(e instanceof ValidationError || e instanceof z.ZodError)) throw e;
+  }
+  revalidatePath("/", "layout");
 }

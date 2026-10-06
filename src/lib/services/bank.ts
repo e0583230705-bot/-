@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { decodeBankFile, fingerprints, parseBankStatement } from "@/lib/domain/bank/parse";
 import { suggestMatches, type Suggestion } from "@/lib/domain/bank/match";
@@ -64,6 +64,8 @@ export async function listBankTransactions(organizationId: string, filter: BankF
         eq(schema.documents.organizationId, organizationId),
         inArray(schema.documents.type, ["tax_invoice", "tax_invoice_receipt", "receipt", "donation_receipt"]),
         notInArray(schema.documents.id, linkedDocs),
+        // חשבונית ששולמה בקבלה — התנועה תותאם לקבלה, לא לחשבונית
+        or(isNull(schema.documents.paidVia), ne(schema.documents.paidVia, "receipt")),
       ),
     );
   const exps = await db
@@ -101,12 +103,14 @@ export async function matchTransaction(organizationId: string, txId: string, tar
   if (!tx) throw new ValidationError("התנועה לא נמצאה");
   if (tx.status !== "unmatched") throw new ValidationError("התנועה כבר טופלה");
 
+  let paidDocumentId: string | null = null;
   if (target.kind === "document") {
     const [doc] = await db
       .select()
       .from(schema.documents)
       .where(and(eq(schema.documents.id, target.id), eq(schema.documents.organizationId, organizationId)));
     if (!doc || tx.amount !== doc.gross) throw new ValidationError("המסמך לא תואם לתנועה");
+    if (doc.type === "tax_invoice" && !doc.paidAt) paidDocumentId = doc.id;
   } else {
     const [exp] = await db
       .select()
@@ -133,10 +137,31 @@ export async function matchTransaction(organizationId: string, txId: string, tar
     )
     .returning({ id: schema.bankTransactions.id });
   if (updated.length === 0) throw new ValidationError("התנועה כבר טופלה");
+  // הכסף נכנס — החשבונית שולמה
+  if (paidDocumentId) {
+    await db
+      .update(schema.documents)
+      .set({ paidAt: tx.date, paidVia: "bank" })
+      .where(and(eq(schema.documents.id, paidDocumentId), isNull(schema.documents.paidAt)));
+  }
 }
 
 export async function setTransactionIgnored(organizationId: string, txId: string, ignored: boolean) {
   const db = await getDb();
+  // ביטול התאמה לחשבונית מבטל גם את סימון התשלום שנוצר ממנה
+  const tx = await getBankTransaction(organizationId, txId);
+  if (tx?.matchedDocumentId) {
+    await db
+      .update(schema.documents)
+      .set({ paidAt: null, paidVia: null })
+      .where(
+        and(
+          eq(schema.documents.id, tx.matchedDocumentId),
+          eq(schema.documents.organizationId, organizationId),
+          eq(schema.documents.paidVia, "bank"),
+        ),
+      );
+  }
   await db
     .update(schema.bankTransactions)
     .set(

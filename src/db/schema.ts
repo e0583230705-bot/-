@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   customType,
   date,
@@ -121,6 +122,11 @@ export const documents = pgTable(
     notes: text("notes"),
     /** מתי הופק ה"מקור". כל הפקה אחריו מסומנת "העתק נאמן למקור" */
     originalDeliveredAt: timestamp("original_delivered_at", { withTimezone: true }),
+    /** לחשבונית / חשבון עסקה: מתי שולמו, ואיך זה נקבע — bank | receipt | manual */
+    paidAt: date("paid_at"),
+    paidVia: text("paid_via"),
+    /** קבלה על חשבונית, או חשבונית מס קבלה על חשבון עסקה */
+    relatedDocumentId: uuid("related_document_id").references((): AnyPgColumn => documents.id),
     createdAt: createdAt(),
   },
   (t) => [

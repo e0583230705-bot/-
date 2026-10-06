@@ -5,6 +5,7 @@ import { DOCUMENT_TYPES, type DocumentType, requiresAllocationNumber } from "@/l
 import { addVat, type ISODate, vatRateOn } from "@/lib/domain/vat";
 import { sum } from "@/lib/domain/money";
 import { isValidIsraeliId } from "@/lib/domain/israeli-id";
+import { PAYABLE_TYPES, PAYMENT_FOR } from "@/lib/domain/receivables";
 import { getOrganization, profileOf, ValidationError } from "./organizations";
 
 export interface NewDocument {
@@ -17,6 +18,8 @@ export interface NewDocument {
   notes?: string;
   /** שמירת הלקוח לרשימת הלקוחות (כשאין customer.id) — באותה טרנזקציה עם המסמך */
   saveCustomer?: boolean;
+  /** קבלה על חשבונית מס / חשבונית מס קבלה על חשבון עסקה — המסמך הקודם יסומן כשולם */
+  relatedDocumentId?: string;
 }
 
 /** מסמכים שאינם חשבונית (קבלה, קבלת תרומה) לא נושאים מע"מ משלהם */
@@ -65,6 +68,22 @@ export async function issueDocument(input: NewDocument) {
       .where(and(eq(schema.customers.id, input.customer.id), eq(schema.customers.organizationId, org.id)));
     if (!owned) throw new ValidationError("הלקוח לא נמצא");
   }
+  let related: typeof schema.documents.$inferSelect | undefined;
+  if (input.relatedDocumentId) {
+    [related] = await db
+      .select()
+      .from(schema.documents)
+      .where(and(eq(schema.documents.id, input.relatedDocumentId), eq(schema.documents.organizationId, org.id)));
+    if (!related) throw new ValidationError("המסמך המקושר לא נמצא");
+    if (PAYMENT_FOR[input.type] !== related.type) {
+      throw new ValidationError(`לא ניתן לקשר ${DOCUMENT_TYPES[input.type].label} ל${DOCUMENT_TYPES[related.type as DocumentType].label}`);
+    }
+    if (related.paidAt) throw new ValidationError("המסמך המקושר כבר סומן כשולם");
+    // אין עדיין תמיכה בתשלומים חלקיים — הסכום חייב להיות זהה
+    if (totals.gross !== related.gross) throw new ValidationError("הסכום שונה מסכום המסמך המקושר (תשלום חלקי עדיין לא נתמך)");
+    if (input.issueDate < related.issueDate) throw new ValidationError("תאריך התשלום לא יכול להיות לפני תאריך המסמך המקושר");
+  }
+
   return db.transaction(async (tx) => {
     const [last] = await tx
       .select({ number: schema.documents.number, issueDate: schema.documents.issueDate })
@@ -110,8 +129,17 @@ export async function issueDocument(input: NewDocument) {
         vatRate: rate,
         allocationRequired,
         notes: input.notes || null,
+        relatedDocumentId: related?.id ?? null,
       })
       .returning();
+    if (related) {
+      const paid = await tx
+        .update(schema.documents)
+        .set({ paidAt: input.issueDate, paidVia: "receipt" })
+        .where(and(eq(schema.documents.id, related.id), isNull(schema.documents.paidAt)))
+        .returning({ id: schema.documents.id });
+      if (paid.length === 0) throw new ValidationError("המסמך המקושר כבר סומן כשולם");
+    }
     await tx.insert(schema.documentLines).values(lines.map((l) => ({ ...l, documentId: doc.id })));
     await tx.insert(schema.auditLog).values({
       organizationId: org.id,
@@ -185,4 +213,52 @@ export async function listDocumentEmails(organizationId: string, documentId: str
     .from(schema.emailLog)
     .where(and(eq(schema.emailLog.organizationId, organizationId), eq(schema.emailLog.documentId, documentId)))
     .orderBy(desc(schema.emailLog.createdAt));
+}
+
+/** סימון ידני של חשבונית כשולמה (למשל תשלום במזומן או בצ'ק) */
+export async function markDocumentPaid(organizationId: string, documentId: string, paidAt: ISODate, userId: string) {
+  const db = await getDb();
+  const [doc] = await db
+    .select()
+    .from(schema.documents)
+    .where(and(eq(schema.documents.id, documentId), eq(schema.documents.organizationId, organizationId)));
+  if (!doc || !PAYABLE_TYPES.includes(doc.type as DocumentType)) throw new ValidationError("המסמך לא נמצא");
+  if (paidAt < doc.issueDate) throw new ValidationError("תאריך התשלום לא יכול להיות לפני תאריך המסמך");
+  const updated = await db
+    .update(schema.documents)
+    .set({ paidAt, paidVia: "manual" })
+    .where(and(eq(schema.documents.id, doc.id), isNull(schema.documents.paidAt)))
+    .returning({ id: schema.documents.id });
+  if (updated.length === 0) throw new ValidationError("המסמך כבר סומן כשולם");
+  await db.insert(schema.auditLog).values({
+    organizationId,
+    action: "mark_paid",
+    entity: "document",
+    entityId: doc.id,
+    data: { paidAt, by: userId },
+  });
+}
+
+/** ביטול סימון ידני בלבד — תשלום שנקבע מקבלה או מהבנק מבטלים במקור שלו */
+export async function markDocumentUnpaid(organizationId: string, documentId: string, userId: string) {
+  const db = await getDb();
+  const updated = await db
+    .update(schema.documents)
+    .set({ paidAt: null, paidVia: null })
+    .where(
+      and(
+        eq(schema.documents.id, documentId),
+        eq(schema.documents.organizationId, organizationId),
+        eq(schema.documents.paidVia, "manual"),
+      ),
+    )
+    .returning({ id: schema.documents.id });
+  if (updated.length === 0) throw new ValidationError("אפשר לבטל רק סימון תשלום ידני");
+  await db.insert(schema.auditLog).values({
+    organizationId,
+    action: "mark_unpaid",
+    entity: "document",
+    entityId: documentId,
+    data: { by: userId },
+  });
 }

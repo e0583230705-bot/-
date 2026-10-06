@@ -7,6 +7,8 @@ import { osekPaturCeiling, type VatFrequency } from "@/lib/domain/business-types
 import { formatDate, formatILS, todayISO } from "@/lib/format";
 import { periodContaining } from "@/lib/periods";
 import { Stat } from "@/components/stat";
+import { listDocuments } from "@/lib/services/documents";
+import { summarizeReceivables } from "@/lib/domain/receivables";
 
 export default async function DashboardPage() {
   const { org, can } = await getContext();
@@ -26,6 +28,8 @@ export default async function DashboardPage() {
     ].sort((a, b) => a.due.localeCompare(b.due)),
     today,
   );
+
+  const receivables = summarizeReceivables(await listDocuments(org.id), today);
 
   const ceiling = org.businessType === "osek_patur" ? osekPaturCeiling(year) : undefined;
   const ceilingPct = ceiling ? Math.min(100, Math.round((ytd.revenue / (ceiling * 100)) * 100)) : 0;
@@ -55,6 +59,21 @@ export default async function DashboardPage() {
           <Stat label="מע״מ" value="פטור" hint={`${profile.label} אינו מדווח מע״מ`} />
         )}
       </section>
+
+      {receivables.openCount > 0 && (
+        <Link href="/income?filter=open" className="card flex flex-wrap items-center justify-between gap-3 hover:border-brand">
+          <div>
+            <p className="font-bold">ממתין לתשלום מלקוחות</p>
+            <p className="text-sm text-muted">
+              {receivables.openCount} חשבוניות פתוחות
+              {receivables.overdueCount > 0 && (
+                <span className="text-danger"> · {receivables.overdueCount} באיחור של יותר מ־30 יום</span>
+              )}
+            </p>
+          </div>
+          <p className="num text-2xl font-bold">{formatILS(receivables.open)}</p>
+        </Link>
+      )}
 
       {ceiling && (
         <section className="card">

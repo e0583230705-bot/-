@@ -27,16 +27,26 @@ export function DocumentForm({
   today,
   customers,
   initialCustomerId,
+  paymentFor,
 }: {
   allowedTypes: DocumentType[];
   vatRate: number;
   today: string;
   customers: SavedCustomer[];
   initialCustomerId?: string;
+  /** הפקת קבלה על חשבונית (או חשבונית מס קבלה על חשבון עסקה): הסוג, הלקוח והשורות קבועים מראש */
+  paymentFor?: {
+    documentId: string;
+    title: string;
+    type: DocumentType;
+    customer: { id: string | null; name: string; taxId: string | null; isVatRegistered: boolean };
+    lines: { description: string; quantity: number; unitPrice: number }[];
+  };
 }) {
   const [state, action, pending, ready] = useFormAction<FormState>(issueDocumentAction, {});
-  const [type, setType] = useState<DocumentType>(allowedTypes[0]);
-  const initial = customers.find((c) => c.id === initialCustomerId);
+  const types = paymentFor ? [paymentFor.type] : allowedTypes;
+  const [type, setType] = useState<DocumentType>(types[0]);
+  const initial = paymentFor?.customer ?? customers.find((c) => c.id === initialCustomerId);
   const [customerId, setCustomerId] = useState(initial?.id ?? "");
   const [customerName, setCustomerName] = useState(initial?.name ?? "");
   const [customerTaxId, setCustomerTaxId] = useState(initial?.taxId ?? "");
@@ -49,7 +59,16 @@ export function DocumentForm({
     setCustomerTaxId(c?.taxId ?? "");
     setVatRegistered(c?.isVatRegistered ?? false);
   }
-  const [lines, setLines] = useState<Line[]>([{ key: 0, description: "", quantity: "1", price: "" }]);
+  const [lines, setLines] = useState<Line[]>(
+    paymentFor
+      ? paymentFor.lines.map((l, i) => ({
+          key: i,
+          description: l.description,
+          quantity: String(l.quantity),
+          price: (l.unitPrice / 100).toFixed(2),
+        }))
+      : [{ key: 0, description: "", quantity: "1", price: "" }],
+  );
 
   const carriesVat = vatRate > 0 && (DOCUMENT_TYPES[type].isTaxInvoice || type === "proforma");
   const net = lines.reduce(
@@ -73,7 +92,7 @@ export function DocumentForm({
             onChange={(e) => setType(e.target.value as DocumentType)}
             className="input"
           >
-            {allowedTypes.map((t) => (
+            {types.map((t) => (
               <option key={t} value={t}>
                 {DOCUMENT_TYPES[t].label}
               </option>
@@ -84,7 +103,12 @@ export function DocumentForm({
           <label className="label" htmlFor="issueDate">תאריך</label>
           <input id="issueDate" name="issueDate" type="date" defaultValue={today} required className="input" />
         </div>
-        {customers.length > 0 && (
+        {paymentFor && (
+          <p className="rounded-lg bg-brand-soft px-3 py-2 text-sm text-brand sm:col-span-2">
+            תשלום על {paymentFor.title}. אחרי ההפקה המסמך יסומן כשולם.
+          </p>
+        )}
+        {customers.length > 0 && !paymentFor && (
           <div className="sm:col-span-2">
             <label className="label" htmlFor="customerPick">לקוח</label>
             <select
@@ -104,6 +128,7 @@ export function DocumentForm({
           </div>
         )}
         <input type="hidden" name="customerId" value={customerId} />
+        {paymentFor && <input type="hidden" name="relatedDocumentId" value={paymentFor.documentId} />}
         <div>
           <label className="label" htmlFor="customerName">שם הלקוח</label>
           <input
