@@ -76,6 +76,34 @@ describe("parseBkmvdata", () => {
   });
 });
 
+describe("compatibility with real exporters", () => {
+  // שורות כפי ש־Linet (תוכנת הנה"ח ישראלית בקוד פתוח) כותבת אותן ב־sprintf: שדות טקסט מיושרים לימין עם רווחים,
+  // סכום "+%015.2f" בלי הנקודה, ותנועה עם שדה "עתידי" ארוך יותר מבמפרט
+  const pad = (v: string | number, w: number) => String(v).padStart(w, " ");
+  const zero = (v: number, w: number) => String(v).padStart(w, "0");
+  it("reads right-aligned text fields and longer trailing filler", () => {
+    const b110 =
+      "B110" + zero(2, 9) + zero(OSEK, 9) + pad("101", 15) + pad("קופה ראשית", 50) + pad(1, 15) + pad("נכסים", 30) +
+      pad("", 50) + pad("", 10) + pad("", 30) + pad("", 8) + pad("", 30) + pad("", 2) + pad("", 15) +
+      "+00000000050000" + "+00000000118000" + "+00000000000000" + zero(0, 4) + zero(0, 9) + pad("", 41);
+    const b100 =
+      "B100" + zero(3, 9) + zero(OSEK, 9) + zero(42, 10) + zero(1, 5) + zero(0, 8) + pad(1, 15) + pad("77", 20) + zero(400, 3) +
+      pad("", 20) + zero(0, 3) + pad("קבלה", 50) + "20250305" + "20250305" + pad("101", 15) + pad("", 15) + "1" + pad("", 3) +
+      "+" + "000000001180.00".replace(".", "") + "+" + zero(0, 14) + "+" + zero(0, 11) + pad("", 10) + pad("", 10) + pad("", 7) +
+      "20250305" + pad("", 34);
+    const file = [
+      record(95, [[1, 4, "A100"], [5, 13, 1], [14, 22, OSEK], [23, 37, MAIN], [38, 45, "&OF1.31&"]]),
+      b110,
+      b100,
+      record(110, [[1, 4, "Z900"], [5, 13, 4], [14, 22, OSEK], [23, 37, MAIN], [38, 45, "&OF1.31&"], [46, 60, 4]]),
+    ].join("\r\n");
+    const r = parseBkmvdata(file);
+    expect(r.accounts[0]).toMatchObject({ code: "101", name: "קופה ראשית", openingBalance: 50000, reportedDebits: 118000 });
+    expect(r.lines[0]).toMatchObject({ entryId: "42", accountCode: "101", amount: 118000, description: "קבלה", reference: "77" });
+    expect(r.issues).toEqual([]);
+  });
+});
+
 describe("parseIni and cross-check", () => {
   const ini = [
     record(466, [
