@@ -2,7 +2,7 @@ import "server-only";
 import { formatILS } from "@/lib/domain/money";
 import { documentHtml, loadDocumentForPrint, markForDownload } from "@/lib/pdf/document-pdf";
 import { documentTitle } from "@/lib/pdf/document-html";
-import { htmlToPdf } from "@/lib/pdf/render";
+import { assertPdfAvailable, htmlToPdf, PdfUnavailableError } from "@/lib/pdf/render";
 import { ValidationError } from "@/lib/services/organizations";
 import { sendEmail } from "./send";
 import { documentEmail } from "./templates";
@@ -15,6 +15,12 @@ export async function sendDocumentToCustomer(documentId: string, to: string, mes
 
   const { doc, ctx } = loaded;
   const title = documentTitle(doc.type, doc.number);
+  try {
+    await assertPdfAvailable();
+  } catch (e) {
+    if (e instanceof PdfUnavailableError) throw new ValidationError("לא ניתן לשלוח: הפקת PDF אינה זמינה בשרת הזה");
+    throw e;
+  }
   const mark = await markForDownload(loaded);
   const pdf = await htmlToPdf(await documentHtml(loaded, mark));
   const email = documentEmail({

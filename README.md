@@ -98,7 +98,15 @@ npm run lint
 הגופן (Heebo, רישיון OFL) מוטמע מתוך `assets/fonts`, כך שאין תלות בגופנים של השרת.
 בשרת ייצור יש להתקין Chromium ולהגדיר את משתנה הסביבה `CHROMIUM_PATH` לנתיב שלו.
 
-שינוי בסכמה: עורכים את `src/db/schema.ts` ומריצים `npm run db:generate`.
+שינוי בסכמה: עורכים את `src/db/schema.ts` ומריצים `npm run db:generate` (יוצר מיגרציה ומעתיק אותה גם
+לפורמט של Netlify ב־`netlify/database/migrations`).
+
+### העלאה ל־Netlify
+
+- מסד הנתונים: Netlify Database (Postgres) — נוצר אוטומטית; המיגרציות מורצות בכל העלאה.
+  משתנה סביבה: `DATABASE_DRIVER=netlify`. (לכל Postgres אחר: `DATABASE_URL`.)
+- מגבלות בשרת serverless: אין Chromium — הפקת PDF ושליחת מסמכים במייל מחזירות הודעה שהפעולה אינה זמינה;
+  גודל בקשה מוגבל ל־6MB.
 
 ## מפת דרכים
 

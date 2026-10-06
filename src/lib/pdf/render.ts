@@ -7,6 +7,13 @@ import { chromium, type Browser } from "playwright-core";
  */
 const globalForPdf = globalThis as unknown as { browser?: Promise<Browser> };
 
+/** בשרת שאין בו Chromium (למשל פונקציות serverless) — הפקת PDF לא זמינה */
+export class PdfUnavailableError extends Error {
+  constructor() {
+    super("הפקת PDF אינה זמינה בשרת הזה");
+  }
+}
+
 function getBrowser(): Promise<Browser> {
   globalForPdf.browser ??= chromium
     .launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
@@ -18,9 +25,15 @@ function getBrowser(): Promise<Browser> {
     })
     .catch((err) => {
       globalForPdf.browser = undefined;
-      throw err;
+      console.error("Chromium launch failed", err);
+      throw new PdfUnavailableError();
     });
   return globalForPdf.browser;
+}
+
+/** בודק שאפשר להפיק PDF (מפעיל את Chromium אם צריך) — לפני פעולה שאין ממנה חזרה, כמו סימון "מקור" */
+export async function assertPdfAvailable(): Promise<void> {
+  await getBrowser();
 }
 
 export async function htmlToPdf(html: string): Promise<Uint8Array> {
