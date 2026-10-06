@@ -81,3 +81,9 @@ body {
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* .num הופך את כיוון התא ל־LTR, ואז text-end מיישר לימין — הפוך מהכותרות.
+   בממשק RTL "סוף" הוא תמיד שמאל, אז מקבעים את זה. מחוץ ל־@layer, כי סגנון בלי שכבה גובר על ה־utilities. */
+.num.text-end {
+  text-align: left;
+}

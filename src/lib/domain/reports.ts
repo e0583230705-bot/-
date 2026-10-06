@@ -11,6 +11,8 @@ export interface IncomeEntry {
 
 export interface ExpenseEntry {
   date: ISODate;
+  /** שם הקטגוריה — לפילוח בדוחות */
+  category?: string;
   net: Agorot;
   vat: Agorot;
   taxDeductiblePct: number;
@@ -74,12 +76,7 @@ export function computeProfitAndLoss(
   const inc = income.filter((e) => inPeriod(e.date, period));
   const exp = expenses.filter((e) => inPeriod(e.date, period));
   const revenue = sum(inc.map((e) => signed(e, e.net)));
-  const recognizedExpenses = sum(
-    exp.map((e) => {
-      const nonDeductibleVat = e.vat - applyPercent(e.vat, e.vatDeductiblePct);
-      return applyPercent(e.net + nonDeductibleVat, e.taxDeductiblePct);
-    }),
-  );
+  const recognizedExpenses = sum(exp.map(recognizedAmount));
   return {
     period,
     revenue,
@@ -87,4 +84,57 @@ export function computeProfitAndLoss(
     recognizedExpenses,
     profit: revenue - recognizedExpenses,
   };
+}
+
+/** ההוצאה המוכרת למס מתוך תנועת הוצאה אחת (כולל מע"מ שלא קוזז) */
+export function recognizedAmount(e: ExpenseEntry): Agorot {
+  const nonDeductibleVat = e.vat - applyPercent(e.vat, e.vatDeductiblePct);
+  return applyPercent(e.net + nonDeductibleVat, e.taxDeductiblePct);
+}
+
+export interface MonthRow {
+  month: number;
+  revenue: Agorot;
+  recognizedExpenses: Agorot;
+  profit: Agorot;
+  outputVat: Agorot;
+  inputVat: Agorot;
+}
+
+export function monthlyBreakdown(year: number, income: IncomeEntry[], expenses: ExpenseEntry[]): MonthRow[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const month = i + 1;
+    const from = `${year}-${String(month).padStart(2, "0")}-01`;
+    const to = `${year}-${String(month).padStart(2, "0")}-31`;
+    const pl = computeProfitAndLoss({ from, to }, income, expenses);
+    const vat = computeVatReport({ from, to }, income, expenses);
+    return {
+      month,
+      revenue: pl.revenue,
+      recognizedExpenses: pl.recognizedExpenses,
+      profit: pl.profit,
+      outputVat: vat.outputVat,
+      inputVat: vat.inputVat,
+    };
+  });
+}
+
+export interface CategoryRow {
+  category: string;
+  total: Agorot;
+  recognized: Agorot;
+  count: number;
+}
+
+export function expensesByCategory(period: Period, expenses: ExpenseEntry[]): CategoryRow[] {
+  const rows = new Map<string, CategoryRow>();
+  for (const e of expenses.filter((x) => inPeriod(x.date, period))) {
+    const key = e.category ?? "ללא קטגוריה";
+    const row = rows.get(key) ?? { category: key, total: 0, recognized: 0, count: 0 };
+    row.total += e.net + e.vat;
+    row.recognized += recognizedAmount(e);
+    row.count += 1;
+    rows.set(key, row);
+  }
+  return [...rows.values()].sort((a, b) => b.recognized - a.recognized);
 }

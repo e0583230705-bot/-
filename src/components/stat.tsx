@@ -13,7 +13,7 @@ export function Stat({
   return (
     <div className="card">
       <p className="text-sm text-muted">{label}</p>
-      <p className={`num mt-1 text-end text-2xl font-bold ${color}`}>{value}</p>
+      <p className={`num mt-1 text-right text-2xl font-bold ${color}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );

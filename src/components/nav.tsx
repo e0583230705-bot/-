@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/expenses", label: "הוצאות" },
   { href: "/bank", label: "תנועות בנק" },
   { href: "/vat", label: "דוח מע\"מ" },
+  { href: "/reports", label: "דוח שנתי" },
   { href: "/calendar", label: "מועדי דיווח" },
   { href: "/settings", label: "משתמשים והרשאות" },
 ];

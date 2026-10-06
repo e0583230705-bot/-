@@ -121,3 +121,30 @@ describe("tax calendar", () => {
     expect(cal.at(-1)?.kind).toBe("annual_report");
   });
 });
+
+describe("annual breakdowns", async () => {
+  const { monthlyBreakdown, expensesByCategory } = await import("./reports");
+  const income = [
+    { date: "2026-01-10", net: 100000, vat: 18000, isCredit: false },
+    { date: "2026-03-05", net: 50000, vat: 9000, isCredit: false },
+  ];
+  const expenses = [
+    { date: "2026-01-15", category: "ציוד", net: 10000, vat: 1800, taxDeductiblePct: 100, vatDeductiblePct: 100 },
+    { date: "2026-03-20", category: "רכב", net: 30000, vat: 5400, taxDeductiblePct: 45, vatDeductiblePct: 66.67 },
+    { date: "2026-03-21", category: "ציוד", net: 5000, vat: 900, taxDeductiblePct: 100, vatDeductiblePct: 100 },
+  ];
+  it("splits the year by month and sums back to the annual totals", () => {
+    const months = monthlyBreakdown(2026, income, expenses);
+    expect(months).toHaveLength(12);
+    expect(months[0]).toMatchObject({ month: 1, revenue: 100000, recognizedExpenses: 10000, outputVat: 18000, inputVat: 1800 });
+    expect(months[1].revenue).toBe(0);
+    const annual = computeProfitAndLoss({ from: "2026-01-01", to: "2026-12-31" }, income, expenses);
+    expect(months.reduce((s, m) => s + m.profit, 0)).toBe(annual.profit);
+  });
+  it("groups expenses by category, largest recognized first", () => {
+    const rows = expensesByCategory({ from: "2026-01-01", to: "2026-12-31" }, expenses);
+    expect(rows.map((r) => r.category)).toEqual(["ציוד", "רכב"]);
+    expect(rows[0]).toMatchObject({ total: 17700, recognized: 15000, count: 2 });
+    expect(rows[1].recognized).toBe(14310);
+  });
+});

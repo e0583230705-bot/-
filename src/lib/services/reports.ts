@@ -38,6 +38,7 @@ export async function loadLedger(organizationId: string) {
     .where(eq(schema.expenses.organizationId, org.id));
   const expenses: ExpenseEntry[] = rows.map(({ e, c }) => ({
     date: e.date,
+    category: c.label,
     net: e.net,
     vat: e.vat,
     taxDeductiblePct: c.taxDeductiblePct,
