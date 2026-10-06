@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/", label: "לוח בקרה" },
   { href: "/income", label: "הכנסות ומסמכים" },
+  { href: "/customers", label: "לקוחות" },
   { href: "/expenses", label: "הוצאות" },
   { href: "/bank", label: "תנועות בנק" },
   { href: "/vat", label: "דוח מע\"מ" },

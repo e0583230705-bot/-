@@ -9,6 +9,7 @@ import { addMember, ForbiddenError, getRole, removeMember } from "@/lib/services
 import { createOrganization, ValidationError } from "@/lib/services/organizations";
 import { issueDocument } from "@/lib/services/documents";
 import { addExpense } from "@/lib/services/expenses";
+import { createCustomer, updateCustomer } from "@/lib/services/customers";
 import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
 import { BankParseError } from "@/lib/domain/bank/parse";
 import { parseShekels } from "@/lib/domain/money";
@@ -132,6 +133,8 @@ export async function removeMemberAction(formData: FormData) {
 const documentSchema = z.object({
   type: z.enum(["proforma", "tax_invoice", "tax_invoice_receipt", "credit_note", "receipt", "donation_receipt"]),
   issueDate: date,
+  customerId: z.union([z.uuid(), z.literal("")]).optional(),
+  saveCustomer: z.literal("on").optional(),
   customerName: z.string().trim().min(1, "חסר שם לקוח"),
   customerTaxId: z.string().trim().optional(),
   customerIsVatRegistered: z.literal("on").optional(),
@@ -166,7 +169,9 @@ export async function issueDocumentAction(_: FormState, formData: FormData): Pro
       organizationId: org.id,
       type: input.type,
       issueDate: input.issueDate,
+      saveCustomer: input.saveCustomer === "on",
       customer: {
+        id: input.customerId || undefined,
         name: input.customerName,
         taxId: input.customerTaxId,
         isVatRegistered: input.customerIsVatRegistered === "on",
@@ -250,4 +255,40 @@ export async function ignoreTransactionAction(formData: FormData) {
   await bankButtonAction((orgId) =>
     setTransactionIgnored(orgId, uuid.parse(formData.get("txId")), formData.get("ignored") === "1"),
   );
+}
+
+const customerSchema = z.object({
+  name: z.string(),
+  taxId: z.string().optional(),
+  isVatRegistered: z.literal("on").optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
+
+function parseCustomer(formData: FormData) {
+  const input = customerSchema.parse(Object.fromEntries(formData));
+  return { ...input, isVatRegistered: input.isVatRegistered === "on" };
+}
+
+export async function createCustomerAction(_: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    await createCustomer(org.id, parseCustomer(formData));
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath("/customers");
+  redirect("/customers");
+}
+
+export async function updateCustomerAction(id: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    await updateCustomer(org.id, uuid.parse(id), parseCustomer(formData));
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath("/customers");
+  redirect(`/customers/${id}`);
 }

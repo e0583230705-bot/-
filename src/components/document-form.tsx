@@ -14,17 +14,41 @@ interface Line {
   price: string;
 }
 
+export interface SavedCustomer {
+  id: string;
+  name: string;
+  taxId: string | null;
+  isVatRegistered: boolean;
+}
+
 export function DocumentForm({
   allowedTypes,
   vatRate,
   today,
+  customers,
+  initialCustomerId,
 }: {
   allowedTypes: DocumentType[];
   vatRate: number;
   today: string;
+  customers: SavedCustomer[];
+  initialCustomerId?: string;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(issueDocumentAction, {});
   const [type, setType] = useState<DocumentType>(allowedTypes[0]);
+  const initial = customers.find((c) => c.id === initialCustomerId);
+  const [customerId, setCustomerId] = useState(initial?.id ?? "");
+  const [customerName, setCustomerName] = useState(initial?.name ?? "");
+  const [customerTaxId, setCustomerTaxId] = useState(initial?.taxId ?? "");
+  const [vatRegistered, setVatRegistered] = useState(initial?.isVatRegistered ?? false);
+
+  function pickCustomer(id: string) {
+    const c = customers.find((x) => x.id === id);
+    setCustomerId(c?.id ?? "");
+    setCustomerName(c?.name ?? "");
+    setCustomerTaxId(c?.taxId ?? "");
+    setVatRegistered(c?.isVatRegistered ?? false);
+  }
   const [lines, setLines] = useState<Line[]>([{ key: 0, description: "", quantity: "1", price: "" }]);
 
   const carriesVat = vatRate > 0 && (DOCUMENT_TYPES[type].isTaxInvoice || type === "proforma");
@@ -60,19 +84,66 @@ export function DocumentForm({
           <label className="label" htmlFor="issueDate">תאריך</label>
           <input id="issueDate" name="issueDate" type="date" defaultValue={today} required className="input" />
         </div>
+        {customers.length > 0 && (
+          <div className="sm:col-span-2">
+            <label className="label" htmlFor="customerPick">לקוח</label>
+            <select
+              id="customerPick"
+              value={customerId}
+              onChange={(e) => pickCustomer(e.target.value)}
+              className="input"
+            >
+              <option value="">לקוח חדש</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.taxId ? ` (${c.taxId})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <input type="hidden" name="customerId" value={customerId} />
         <div>
           <label className="label" htmlFor="customerName">שם הלקוח</label>
-          <input id="customerName" name="customerName" required className="input" />
+          <input
+            id="customerName"
+            name="customerName"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            required
+            className="input"
+          />
         </div>
         <div>
           <label className="label" htmlFor="customerTaxId">מספר עוסק / ח.פ. של הלקוח</label>
-          <input id="customerTaxId" name="customerTaxId" inputMode="numeric" className="input num" />
+          <input
+            id="customerTaxId"
+            name="customerTaxId"
+            value={customerTaxId}
+            onChange={(e) => setCustomerTaxId(e.target.value)}
+            inputMode="numeric"
+            className="input num"
+          />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="customerIsVatRegistered" />
-        הלקוח הוא עוסק מורשה / חברה (רלוונטי למספר הקצאה)
-      </label>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="customerIsVatRegistered"
+            checked={vatRegistered}
+            onChange={(e) => setVatRegistered(e.target.checked)}
+          />
+          הלקוח הוא עוסק מורשה / חברה (רלוונטי למספר הקצאה)
+        </label>
+        {!customerId && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="saveCustomer" defaultChecked />
+            שמירה ברשימת הלקוחות
+          </label>
+        )}
+      </div>
 
       <fieldset className="space-y-2">
         <legend className="label">פירוט</legend>

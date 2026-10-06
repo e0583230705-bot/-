@@ -4,15 +4,19 @@ import { getDb, schema } from "@/db";
 import { DOCUMENT_TYPES, type DocumentType, requiresAllocationNumber } from "@/lib/domain/documents";
 import { addVat, type ISODate, vatRateOn } from "@/lib/domain/vat";
 import { sum } from "@/lib/domain/money";
+import { isValidIsraeliId } from "@/lib/domain/israeli-id";
 import { getOrganization, profileOf, ValidationError } from "./organizations";
 
 export interface NewDocument {
   organizationId: string;
   type: DocumentType;
   issueDate: ISODate;
-  customer: { name: string; taxId?: string; isVatRegistered: boolean };
+  /** customerId — לקוח שמור (חייב להיות של אותו עסק); הפרטים עצמם נשמרים במסמך כפי שהם ביום ההפקה */
+  customer: { id?: string; name: string; taxId?: string; isVatRegistered: boolean };
   lines: { description: string; quantity: number; unitPrice: number }[];
   notes?: string;
+  /** שמירת הלקוח לרשימת הלקוחות (כשאין customer.id) — באותה טרנזקציה עם המסמך */
+  saveCustomer?: boolean;
 }
 
 /** מסמכים שאינם חשבונית (קבלה, קבלת תרומה) לא נושאים מע"מ משלהם */
@@ -50,6 +54,17 @@ export async function issueDocument(input: NewDocument) {
   });
 
   const db = await getDb();
+  const customerTaxId = input.customer.taxId?.trim() || undefined;
+  if (customerTaxId && !isValidIsraeliId(customerTaxId)) {
+    throw new ValidationError("מספר עוסק / ח.פ. של הלקוח לא תקין");
+  }
+  if (input.customer.id) {
+    const [owned] = await db
+      .select({ id: schema.customers.id })
+      .from(schema.customers)
+      .where(and(eq(schema.customers.id, input.customer.id), eq(schema.customers.organizationId, org.id)));
+    if (!owned) throw new ValidationError("הלקוח לא נמצא");
+  }
   return db.transaction(async (tx) => {
     const [last] = await tx
       .select({ number: schema.documents.number, issueDate: schema.documents.issueDate })
@@ -65,6 +80,20 @@ export async function issueDocument(input: NewDocument) {
       );
     }
 
+    let customerId = input.customer.id ?? null;
+    if (!customerId && input.saveCustomer) {
+      const [created] = await tx
+        .insert(schema.customers)
+        .values({
+          organizationId: org.id,
+          name: input.customer.name.trim(),
+          taxId: customerTaxId ?? null,
+          isVatRegistered: input.customer.isVatRegistered,
+        })
+        .returning({ id: schema.customers.id });
+      customerId = created.id;
+    }
+
     const [doc] = await tx
       .insert(schema.documents)
       .values({
@@ -72,8 +101,9 @@ export async function issueDocument(input: NewDocument) {
         type: input.type,
         number: (last?.number ?? 0) + 1,
         issueDate: input.issueDate,
+        customerId,
         customerName: input.customer.name.trim(),
-        customerTaxId: input.customer.taxId || null,
+        customerTaxId: customerTaxId ?? null,
         net: totals.net,
         vat: totals.vat,
         gross: totals.gross,
