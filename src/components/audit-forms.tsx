@@ -32,7 +32,13 @@ export function CreateEngagementForm({ defaultYear }: { defaultYear: number }) {
   );
 }
 
-export function LedgerImportForm({ action: serverAction }: { action: (s: FormState, f: FormData) => Promise<FormState> }) {
+export function LedgerImportForm({
+  action: serverAction,
+  label = "קליטת הנתונים",
+}: {
+  action: (s: FormState, f: FormData) => Promise<FormState>;
+  label?: string;
+}) {
   const [state, action, pending, ready] = useFormAction<FormState>(serverAction, {});
   return (
     <form method="post" onSubmit={action} className="space-y-2">
@@ -47,7 +53,7 @@ export function LedgerImportForm({ action: serverAction }: { action: (s: FormSta
           className="text-sm file:me-3 file:rounded-lg file:border file:border-border file:bg-bg file:px-3 file:py-2 file:text-sm"
         />
         <button className="btn" disabled={pending || !ready}>
-          {pending ? "קולט..." : "קליטת הנתונים"}
+          {pending ? "קולט..." : label}
         </button>
       </div>
       <FormError message={state.error} />
@@ -95,6 +101,38 @@ export function MaterialityForm({
           חישוב
         </button>
       </div>
+      <FormError message={state.error} />
+    </form>
+  );
+}
+
+export function NoteForm({
+  action: serverAction,
+  initial,
+  meta,
+}: {
+  action: (s: FormState, f: FormData) => Promise<FormState>;
+  initial?: string;
+  meta?: string;
+}) {
+  const [state, action, pending, ready] = useFormAction<FormState>(serverAction, {});
+  return (
+    <form method="post" onSubmit={action} className="space-y-1">
+      <div className="flex gap-2">
+        <textarea
+          name="text"
+          rows={1}
+          defaultValue={initial}
+          placeholder="הסבר לשינוי ומה נבדק"
+          aria-label="הסבר"
+          className="input min-h-9 text-xs"
+        />
+        <button className="btn-ghost text-xs" disabled={pending || !ready}>
+          {pending ? "..." : "שמירה"}
+        </button>
+      </div>
+      {meta && <p className="text-[11px] text-muted">{meta}</p>}
+      {state.ok && !pending && <p className="text-[11px] text-brand">נשמר</p>}
       <FormError message={state.error} />
     </form>
   );

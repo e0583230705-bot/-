@@ -3,6 +3,8 @@ import { registerUser } from "./auth";
 import { createOrganization } from "./organizations";
 import { buildFile, encode1255, OSEK } from "@/test/uniform-fixture";
 import {
+  listNotes,
+  saveNote,
   createEngagement,
   getEngagement,
   importLedger,
@@ -61,6 +63,38 @@ describe("audit engagements", () => {
     const loaded = await loadEngagementLedger(org.id, e.id);
     expect(loaded?.engagement.sourceType).toBe("uniform");
     expect(loaded?.lines.map((l) => l.amount)).toEqual([118000, -100000, -18000]);
+  });
+
+  it("keeps prior-year data separate from the current year", async () => {
+    const { user, org } = await firm("audit6@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2026 });
+    await importLedger(org.id, e.id, { name: "2026.csv", bytes: enc(LEDGER) });
+    const prior = LEDGER.replace(/05\/03\/2026/g, "05/03/2025").replace("1180,", "590,").replace(",,1000", ",,500").replace(",,180", ",,90");
+    await importLedger(org.id, e.id, { name: "2024.csv", bytes: enc(prior) }, "prior");
+    // קליטה חוזרת של השנה הקודמת לא נוגעת בשנה הנוכחית
+    await importLedger(org.id, e.id, { name: "2024b.csv", bytes: enc(prior) }, "prior");
+    const loaded = await loadEngagementLedger(org.id, e.id);
+    expect(loaded?.lines.map((l) => l.amount)).toEqual([118000, -100000, -18000]);
+    expect(loaded?.prior.lines.map((l) => l.amount)).toEqual([59000, -50000, -9000]);
+    // שנה לא נכונה: קובץ 2024 שנקלט כשנת הדוח 2025
+    const wrong = await importLedger(org.id, e.id, { name: "oops.csv", bytes: enc(prior) });
+    expect(wrong.issues[0].message).toMatch(/אינן משנת 2026/);
+    expect(loaded?.engagement.sourceFilename).toBe("2026.csv");
+    expect((loaded?.engagement.priorSource as { filename: string }).filename).toBe("2024b.csv");
+  });
+
+  it("saves, updates and deletes notes, scoped to the firm", async () => {
+    const a = await firm("audit7@example.com");
+    const b = await firm("audit8@example.com");
+    const e = await createEngagement(a.org.id, a.user.id, { clientName: "לקוח", fiscalYear: 2025 });
+    await saveNote(a.org.id, e.id, "analytics:a:4000", "גידול במכירות בעקבות לקוח חדש — נבדק מול חוזה", a.user.id);
+    await saveNote(a.org.id, e.id, "analytics:a:4000", "עודכן", a.user.id);
+    expect((await listNotes(a.org.id, e.id)).get("analytics:a:4000")).toMatchObject({ text: "עודכן", author: 'רו"ח' });
+    await expect(saveNote(b.org.id, e.id, "analytics:a:4000", "x", b.user.id)).rejects.toThrow(/לא נמצא/);
+    expect((await listNotes(b.org.id, e.id)).size).toBe(0);
+    await expect(saveNote(a.org.id, e.id, "bad key", "x", a.user.id)).rejects.toThrow(/מזהה/);
+    await saveNote(a.org.id, e.id, "analytics:a:4000", "   ", a.user.id);
+    expect((await listNotes(a.org.id, e.id)).size).toBe(0);
   });
 
   it("validates materiality and records sample redraws", async () => {

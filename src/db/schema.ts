@@ -302,6 +302,8 @@ export const auditEngagements = pgTable(
     /** בעיות שלמות שנמצאו בקבצים עצמם */
     importIssues: jsonb("import_issues"),
     importedAt: timestamp("imported_at", { withTimezone: true }),
+    /** נתוני השנה הקודמת (להשוואה בסקירה האנליטית): קובץ, סוג, מועד ובעיות */
+    priorSource: jsonb("prior_source"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -315,6 +317,8 @@ export const auditAccounts = pgTable(
     engagementId: uuid("engagement_id")
       .notNull()
       .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    /** current = שנת הדוח; prior = השנה הקודמת להשוואה */
+    period: text("period").notNull().default("current"),
     code: text("code").notNull(),
     name: text("name").notNull(),
     openingBalance: integer("opening_balance").notNull().default(0),
@@ -323,7 +327,7 @@ export const auditAccounts = pgTable(
     trialBalanceName: text("trial_balance_name"),
     classification: text("classification"),
   },
-  (t) => [uniqueIndex("audit_accounts_engagement_code").on(t.engagementId, t.code)],
+  (t) => [uniqueIndex("audit_accounts_engagement_period_code").on(t.engagementId, t.period, t.code)],
 );
 
 export const auditLines = pgTable(
@@ -333,6 +337,7 @@ export const auditLines = pgTable(
     engagementId: uuid("engagement_id")
       .notNull()
       .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    period: text("period").notNull().default("current"),
     entryId: text("entry_id").notNull(),
     date: date("date").notNull(),
     accountCode: text("account_code").notNull(),
@@ -340,5 +345,22 @@ export const auditLines = pgTable(
     description: text("description").notNull(),
     reference: text("reference"),
   },
-  (t) => [index("audit_lines_engagement").on(t.engagementId, t.date)],
+  (t) => [index("audit_lines_engagement").on(t.engagementId, t.period, t.date)],
+);
+
+/** הסברים ותיעוד של רואה החשבון לממצאים בתיק (ראשית ניירות העבודה) */
+export const auditNotes = pgTable(
+  "audit_notes",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    /** מזהה הממצא, למשל analytics:a:4000 או spike:4000:2025-12 */
+    itemKey: text("item_key").notNull(),
+    text: text("text").notNull(),
+    authorId: uuid("author_id").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("audit_notes_engagement_item").on(t.engagementId, t.itemKey)],
 );

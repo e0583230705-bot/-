@@ -20,7 +20,7 @@ import { issueDocument, markDocumentPaid, markDocumentUnpaid } from "@/lib/servi
 import { addExpense } from "@/lib/services/expenses";
 import { createCustomer, updateCustomer } from "@/lib/services/customers";
 import { uploadReceipt } from "@/lib/services/receipts";
-import { createEngagement, importLedger, redrawSample, setMateriality } from "@/lib/services/audit";
+import { createEngagement, importLedger, redrawSample, saveNote, setMateriality } from "@/lib/services/audit";
 import { parseShekels as parseMoney } from "@/lib/domain/money";
 import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
 import { BankParseError } from "@/lib/domain/bank/parse";
@@ -419,7 +419,12 @@ export async function createEngagementAction(_: FormState, formData: FormData): 
   redirect(`/audit/${id}`);
 }
 
-export async function importLedgerAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+export async function importLedgerAction(
+  engagementId: string,
+  period: "current" | "prior",
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
   let message: string;
   try {
     const { org } = await requirePermission("write_books");
@@ -429,6 +434,7 @@ export async function importLedgerAction(engagementId: string, _: FormState, for
       org.id,
       uuid.parse(engagementId),
       await Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))),
+      period === "prior" ? "prior" : "current",
     );
     message =
       `נקלטו ${r.lines.toLocaleString("he-IL")} שורות פקודה ב־${r.accounts} חשבונות` +
@@ -470,4 +476,15 @@ export async function redrawSampleAction(engagementId: string) {
   const { org, user } = await requirePermission("write_books");
   await redrawSample(org.id, uuid.parse(engagementId), user.id);
   revalidatePath(`/audit/${engagementId}`);
+}
+
+export async function saveNoteAction(engagementId: string, itemKey: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org, user } = await requirePermission("write_books");
+    await saveNote(org.id, uuid.parse(engagementId), itemKey, String(formData.get("text") ?? ""), user.id);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true };
 }

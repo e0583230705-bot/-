@@ -134,10 +134,13 @@ function parseLedgerFiles(files: { name: string; bytes: Uint8Array }[]) {
  * קליטת ספרי הלקוח לתיק: קבצי מבנה אחיד (BKMVDATA.TXT + INI.TXT) או כרטסת CSV.
  * קליטה חוזרת מחליפה את הנתונים הקודמים (למשל אחרי תיקונים של הלקוח).
  */
+export type LedgerPeriod = "current" | "prior";
+
 export async function importLedger(
   organizationId: string,
   engagementId: string,
   input: { name: string; bytes: Uint8Array } | { name: string; bytes: Uint8Array }[],
+  period: LedgerPeriod = "current",
 ) {
   const files = Array.isArray(input) ? input : [input];
   const engagement = await getEngagement(organizationId, engagementId);
@@ -150,6 +153,15 @@ export async function importLedger(
   const parsed = parseLedgerFiles(files);
   const { accounts, lines, skipped } = parsed;
   const issues = [...parsed.issues];
+  // קובץ של שנה אחרת מזו שנבחרה — טעות נפוצה ומסוכנת (השוואה לא נכונה, ביקורת על שנה שגויה)
+  const expectedYear = String(period === "prior" ? engagement.fiscalYear - 1 : engagement.fiscalYear);
+  const outside = lines.filter((l) => !l.date.startsWith(expectedYear)).length;
+  if (lines.length > 0 && outside / lines.length > 0.05) {
+    issues.unshift({
+      severity: "error",
+      message: `${Math.round((outside / lines.length) * 100)}% מהתנועות אינן משנת ${expectedYear} — ייתכן שנבחר קובץ של שנה אחרת`,
+    });
+  }
   if (parsed.meta && engagement.clientTaxId && parsed.meta.businessTaxId.replace(/^0+/, "") !== engagement.clientTaxId.replace(/^0+/, "")) {
     issues.unshift({
       severity: "error",
@@ -158,12 +170,17 @@ export async function importLedger(
   }
   const db = await getDb();
   await db.transaction(async (tx) => {
-    await tx.delete(schema.auditLines).where(eq(schema.auditLines.engagementId, engagement.id));
-    await tx.delete(schema.auditAccounts).where(eq(schema.auditAccounts.engagementId, engagement.id));
+    await tx
+      .delete(schema.auditLines)
+      .where(and(eq(schema.auditLines.engagementId, engagement.id), eq(schema.auditLines.period, period)));
+    await tx
+      .delete(schema.auditAccounts)
+      .where(and(eq(schema.auditAccounts.engagementId, engagement.id), eq(schema.auditAccounts.period, period)));
     for (let i = 0; i < accounts.length; i += 1000) {
       await tx.insert(schema.auditAccounts).values(
         accounts.slice(i, i + 1000).map((a) => ({
           engagementId: engagement.id,
+          period,
           code: a.code,
           name: a.name,
           openingBalance: a.openingBalance,
@@ -176,37 +193,53 @@ export async function importLedger(
     for (let i = 0; i < lines.length; i += 1000) {
       await tx
         .insert(schema.auditLines)
-        .values(lines.slice(i, i + 1000).map((l) => ({ engagementId: engagement.id, ...l })));
+        .values(lines.slice(i, i + 1000).map((l) => ({ engagementId: engagement.id, period, ...l })));
     }
     await tx
       .update(schema.auditEngagements)
-      .set({
-        sourceFilename: parsed.filename.slice(0, 200),
-        sourceType: parsed.sourceType,
-        sourceMeta: parsed.meta,
-        importIssues: issues,
-        importedAt: new Date(),
-      })
+      .set(
+        period === "current"
+          ? {
+              sourceFilename: parsed.filename.slice(0, 200),
+              sourceType: parsed.sourceType,
+              sourceMeta: parsed.meta,
+              importIssues: issues,
+              importedAt: new Date(),
+            }
+          : {
+              priorSource: {
+                filename: parsed.filename.slice(0, 200),
+                type: parsed.sourceType,
+                meta: parsed.meta,
+                issues,
+                importedAt: new Date().toISOString(),
+              },
+            },
+      )
       .where(eq(schema.auditEngagements.id, engagement.id));
     await tx.insert(schema.auditLog).values({
       organizationId,
       action: "import_ledger",
       entity: "audit_engagement",
       entityId: engagement.id,
-      data: { filename: parsed.filename, source: parsed.sourceType, accounts: accounts.length, lines: lines.length, skipped, issues: issues.length },
+      data: { period, filename: parsed.filename, source: parsed.sourceType, accounts: accounts.length, lines: lines.length, skipped, issues: issues.length },
     });
   });
   return { accounts: accounts.length, lines: lines.length, skipped, sourceType: parsed.sourceType, issues };
 }
 
-export async function loadEngagementLedger(organizationId: string, engagementId: string) {
-  const engagement = await getEngagement(organizationId, engagementId);
-  if (!engagement) return null;
+async function loadPeriod(engagementId: string, period: LedgerPeriod) {
   const db = await getDb();
-  const accounts: LedgerAccount[] = await db
-    .select({ code: schema.auditAccounts.code, name: schema.auditAccounts.name, openingBalance: schema.auditAccounts.openingBalance })
+  const accounts = await db
+    .select({
+      code: schema.auditAccounts.code,
+      name: schema.auditAccounts.name,
+      openingBalance: schema.auditAccounts.openingBalance,
+      trialBalanceCode: schema.auditAccounts.trialBalanceCode,
+      trialBalanceName: schema.auditAccounts.trialBalanceName,
+    })
     .from(schema.auditAccounts)
-    .where(eq(schema.auditAccounts.engagementId, engagement.id));
+    .where(and(eq(schema.auditAccounts.engagementId, engagementId), eq(schema.auditAccounts.period, period)));
   const lines: LedgerLine[] = await db
     .select({
       entryId: schema.auditLines.entryId,
@@ -217,9 +250,55 @@ export async function loadEngagementLedger(organizationId: string, engagementId:
       reference: schema.auditLines.reference,
     })
     .from(schema.auditLines)
-    .where(eq(schema.auditLines.engagementId, engagement.id))
+    .where(and(eq(schema.auditLines.engagementId, engagementId), eq(schema.auditLines.period, period)))
     .orderBy(asc(schema.auditLines.date));
-  return { engagement, accounts, lines };
+  return { accounts, lines };
+}
+
+export async function loadEngagementLedger(organizationId: string, engagementId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) return null;
+  const [current, prior] = await Promise.all([loadPeriod(engagement.id, "current"), loadPeriod(engagement.id, "prior")]);
+  return { engagement, accounts: current.accounts, lines: current.lines, prior };
+}
+
+/** שמירת הסבר/תיעוד לממצא בתיק. טקסט ריק מוחק את ההסבר */
+export async function saveNote(organizationId: string, engagementId: string, itemKey: string, text: string, userId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  if (!/^[a-z]+:[^\r\n]{1,200}$/.test(itemKey)) throw new ValidationError("מזהה ממצא לא תקין");
+  const db = await getDb();
+  const clean = text.trim().slice(0, 5000);
+  if (!clean) {
+    await db
+      .delete(schema.auditNotes)
+      .where(and(eq(schema.auditNotes.engagementId, engagement.id), eq(schema.auditNotes.itemKey, itemKey)));
+    return;
+  }
+  await db
+    .insert(schema.auditNotes)
+    .values({ engagementId: engagement.id, itemKey, text: clean, authorId: userId })
+    .onConflictDoUpdate({
+      target: [schema.auditNotes.engagementId, schema.auditNotes.itemKey],
+      set: { text: clean, authorId: userId, updatedAt: new Date() },
+    });
+}
+
+export async function listNotes(organizationId: string, engagementId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) return new Map<string, { text: string; author: string | null; updatedAt: Date }>();
+  const db = await getDb();
+  const rows = await db
+    .select({
+      itemKey: schema.auditNotes.itemKey,
+      text: schema.auditNotes.text,
+      author: schema.users.name,
+      updatedAt: schema.auditNotes.updatedAt,
+    })
+    .from(schema.auditNotes)
+    .leftJoin(schema.users, eq(schema.auditNotes.authorId, schema.users.id))
+    .where(eq(schema.auditNotes.engagementId, engagement.id));
+  return new Map(rows.map((r) => [r.itemKey, { text: r.text, author: r.author, updatedAt: r.updatedAt }]));
 }
 
 export async function setMateriality(

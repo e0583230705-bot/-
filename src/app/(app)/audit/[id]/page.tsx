@@ -8,11 +8,14 @@ import { benford, BENFORD_MIN_SAMPLE, CONFORMITY_LABELS } from "@/lib/domain/led
 import { computeMateriality, MATERIALITY_BASES, type MaterialityBasis } from "@/lib/domain/ledger/materiality";
 import { monetaryUnitSample } from "@/lib/domain/ledger/sampling";
 import { formatDate, formatILS } from "@/lib/format";
-import { LedgerImportForm, MaterialityForm } from "@/components/audit-forms";
-import { importLedgerAction, redrawSampleAction, setMaterialityAction } from "../../../actions";
+import { LedgerImportForm, MaterialityForm, NoteForm } from "@/components/audit-forms";
+import { importLedgerAction, redrawSampleAction, saveNoteAction, setMaterialityAction } from "../../../actions";
+import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
+import { listNotes } from "@/lib/services/audit";
 
 const TABS = [
   { key: "tb", label: "מאזן בוחן" },
+  { key: "analytics", label: "סקירה אנליטית" },
   { key: "je", label: "פקודות חריגות" },
   { key: "benford", label: "חוק בנפורד" },
   { key: "sample", label: "מדגם" },
@@ -66,7 +69,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
               מומלץ: <strong>קובץ במבנה אחיד</strong> — בחרו יחד את BKMVDATA.TXT ו־INI.TXT מספריית OPENFRMT שהופקה
               בתוכנה של הלקוח. אפשר גם כרטסת הנהלת חשבונות בקובץ CSV. קליטה חוזרת מחליפה את הנתונים.
             </p>
-            <LedgerImportForm action={importLedgerAction.bind(null, e.id)} />
+            <LedgerImportForm action={importLedgerAction.bind(null, e.id, "current")} label={`קליטת שנת הדוח (${e.fiscalYear})`} />
           </div>
         )}
         <div className="card space-y-2">
@@ -111,6 +114,15 @@ export default async function EngagementPage({ params, searchParams }: PageProps
             ))}
           </nav>
           {tab === "tb" && <TrialBalanceTab accounts={accounts} lines={lines} />}
+          {tab === "analytics" && (
+            <AnalyticsTab
+              data={data}
+              performance={materiality?.performance ?? null}
+              by={sp.by === "group" ? "group" : "account"}
+              write={write}
+              notes={await listNotes(org.id, e.id)}
+            />
+          )}
           {tab === "je" && (
             <JournalTab lines={lines} yearEnd={e.yearEnd} performance={materiality?.performance ?? Number.MAX_SAFE_INTEGER} />
           )}
@@ -412,6 +424,165 @@ function SourcePanel({ engagement: e }: { engagement: Data["engagement"] }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const pct = (v: number | null) => (v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`);
+const FLAG_TEXT = { significant: "שינוי מהותי", new: "חשבון חדש", removed: "חשבון שנסגר" } as const;
+
+function AnalyticsTab({
+  data,
+  performance,
+  by,
+  write,
+  notes,
+}: {
+  data: Data;
+  performance: number | null;
+  by: "account" | "group";
+  write: boolean;
+  notes: Awaited<ReturnType<typeof listNotes>>;
+}) {
+  const e = data.engagement;
+  const prior = e.priorSource as { filename: string; type: string; importedAt: string; issues: { message: string }[] } | null;
+  const hasGroups = data.accounts.some((a) => a.trialBalanceCode);
+  const noteFor = (key: string) => {
+    const n = notes.get(key);
+    return {
+      initial: n?.text,
+      meta: n ? `${n.author ?? ""} · ${n.updatedAt.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" })}` : undefined,
+    };
+  };
+
+  if (performance === null) {
+    return <p className="card text-sm text-muted">הגדירו מהותיות כדי להריץ את הסקירה האנליטית — היא קובעת אילו שינויים מסומנים.</p>;
+  }
+
+  const rows = data.prior.lines.length > 0 ? compareYears(data, data.prior, { performanceMateriality: performance, by }) : [];
+  const flagged = rows.filter((r) => r.flag);
+  const spikes = monthlySpikes(data.accounts, data.lines, performance);
+  const explained = flagged.filter((r) => notes.has(`analytics:${r.key}`)).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-2">
+        <h2 className="font-bold">נתוני השנה הקודמת ({e.fiscalYear - 1})</h2>
+        {prior ? (
+          <p className="text-sm text-muted">
+            נקלט מ־<span className="num">{prior.filename}</span> · {data.prior.lines.length.toLocaleString("he-IL")} שורות
+            {prior.issues?.length ? ` · ${prior.issues.length} בעיות בקובץ` : ""}
+          </p>
+        ) : (
+          <p className="text-sm text-muted">כדי להשוות לשנה קודמת, קלטו את הספרים של {e.fiscalYear - 1} (מבנה אחיד או כרטסת).</p>
+        )}
+        {write && (
+          <LedgerImportForm action={importLedgerAction.bind(null, e.id, "prior")} label={`קליטת שנה קודמת (${e.fiscalYear - 1})`} />
+        )}
+      </div>
+
+      {rows.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm">
+              <strong>{flagged.length}</strong> סעיפים דורשים הסבר · הוסברו{" "}
+              <strong className={explained === flagged.length ? "text-brand" : "text-warn"}>{explained}</strong>
+            </p>
+            {hasGroups && (
+              <div className="flex gap-2 text-sm">
+                <Link href={`/audit/${e.id}?tab=analytics&by=account`} className={by === "account" ? "btn" : "btn-ghost"}>
+                  לפי חשבון
+                </Link>
+                <Link href={`/audit/${e.id}?tab=analytics&by=group`} className={by === "group" ? "btn" : "btn-ghost"}>
+                  לפי קבוצה במאזן
+                </Link>
+              </div>
+            )}
+          </div>
+          <div className="card overflow-x-auto p-0">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{by === "group" ? "קבוצה" : "חשבון"}</th>
+                  <th className="text-end">{e.fiscalYear - 1}</th>
+                  <th className="text-end">{e.fiscalYear}</th>
+                  <th className="text-end">שינוי</th>
+                  <th className="text-end">%</th>
+                  <th className="min-w-64">הסבר</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.key} className={r.flag ? "" : "text-muted"}>
+                    <td>
+                      {r.label}
+                      {r.flag && <span className="ms-2 rounded bg-warn-soft px-1.5 py-0.5 text-[11px] text-warn">{FLAG_TEXT[r.flag]}</span>}
+                    </td>
+                    <td className="num text-end">{formatILS(r.prior)}</td>
+                    <td className="num text-end">{formatILS(r.current)}</td>
+                    <td className="num text-end">{formatILS(r.change)}</td>
+                    <td className="num text-end">{pct(r.changePct)}</td>
+                    <td>
+                      {r.flag &&
+                        (write ? (
+                          <NoteForm action={saveNoteAction.bind(null, e.id, `analytics:${r.key}`)} {...noteFor(`analytics:${r.key}`)} />
+                        ) : (
+                          <span className="text-xs">{noteFor(`analytics:${r.key}`).initial ?? "—"}</span>
+                        ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted">
+            מסומן: שינוי שגם גדול מהמהותיות לביצוע ({formatILS(performance)}) וגם עולה על 10%, וחשבונות חדשים או שנסגרו בסכום מהותי.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <h2 className="font-bold">חודשים חריגים ב־{e.fiscalYear}</h2>
+        {spikes.length === 0 ? (
+          <p className="text-sm text-muted">לא נמצאו חודשים חריגים מעל המהותיות.</p>
+        ) : (
+          <div className="card overflow-x-auto p-0">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>חשבון</th>
+                  <th>חודש</th>
+                  <th className="text-end">תנועה בחודש</th>
+                  <th className="text-end">ממוצע חודשי</th>
+                  <th className="min-w-64">הסבר</th>
+                </tr>
+              </thead>
+              <tbody>
+                {spikes.map((s) => {
+                  const key = `spike:${s.accountCode}:${s.month}`;
+                  return (
+                    <tr key={key}>
+                      <td>
+                        <span className="num">{s.accountCode}</span> · {s.accountName}
+                      </td>
+                      <td className="num">{s.month.split("-").reverse().join("/")}</td>
+                      <td className="num text-end">{formatILS(s.movement)}</td>
+                      <td className="num text-end">{formatILS(s.average)}</td>
+                      <td>
+                        {write ? (
+                          <NoteForm action={saveNoteAction.bind(null, e.id, key)} {...noteFor(key)} />
+                        ) : (
+                          <span className="text-xs">{noteFor(key).initial ?? "—"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
