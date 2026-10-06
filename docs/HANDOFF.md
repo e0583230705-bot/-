@@ -55,7 +55,8 @@
   (למשל: `git push <heshbonai> ccr-066e7f67-2irjzj:main`).
 - **Netlify**: נוצר אתר `heshbonai-demo` (site id `105fafda-0ba9-445e-b4cd-6c2dd11c6c89`,
   https://heshbonai-demo.netlify.app). הוגדרו משתני סביבה `DATABASE_DRIVER=netlify` ו־
-  `APP_URL=https://heshbonai-demo.netlify.app`. האתר חובר בטעות לענף `main` של הריפו הישן ולכן מציג את ה־CRM.
+  `APP_URL=https://heshbonai-demo.netlify.app`. האתר מחובר לריפו `-`, וענף הייצור (Production branch) הוגדר
+  ל־`ccr-066e7f67-2irjzj` — כל push לענף הזה בונה ומעלה את האתר מחדש.
   אחרי המעבר לריפו החדש: לחבר את האתר ל־`heshbonai`, ענף `main`.
   מגבלות בשרת serverless: אין Chromium (PDF ושליחת מסמכים מחזירים הודעה מסודרת), בקשות עד 6MB.
 - העלאה ישירה דרך כלי ה־MCP של Netlify נכשלה ב־403 — לכן הדרך היא חיבור האתר ל־GitHub.
