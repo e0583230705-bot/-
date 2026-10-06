@@ -20,7 +20,16 @@ import { issueDocument, markDocumentPaid, markDocumentUnpaid } from "@/lib/servi
 import { addExpense } from "@/lib/services/expenses";
 import { createCustomer, updateCustomer } from "@/lib/services/customers";
 import { uploadReceipt } from "@/lib/services/receipts";
-import { createEngagement, importLedger, redrawSample, saveNote, setMateriality } from "@/lib/services/audit";
+import {
+  createEngagement,
+  importBankStatement,
+  importLedger,
+  redrawSample,
+  saveNote,
+  setMateriality,
+  setStatementBalance,
+  setVatConfig,
+} from "@/lib/services/audit";
 import { parseShekels as parseMoney } from "@/lib/domain/money";
 import { importBankFile, matchTransaction, setTransactionIgnored } from "@/lib/services/bank";
 import { BankParseError } from "@/lib/domain/bank/parse";
@@ -482,6 +491,59 @@ export async function saveNoteAction(engagementId: string, itemKey: string, _: F
   try {
     const { org, user } = await requirePermission("write_books");
     await saveNote(org.id, uuid.parse(engagementId), itemKey, String(formData.get("text") ?? ""), user.id);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true };
+}
+
+export async function importBankStatementAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  let message: string;
+  try {
+    const { org } = await requirePermission("write_books");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ" };
+    const accountCode = String(formData.get("accountCode") ?? "");
+    if (!accountCode) return { error: "יש לבחור את חשבון הבנק בספרים" };
+    const r = await importBankStatement(org.id, uuid.parse(engagementId), accountCode, {
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+    message = `נקלטו ${r.rows.toLocaleString("he-IL")} תנועות מדף הבנק`;
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true, message };
+}
+
+export async function setStatementBalanceAction(
+  engagementId: string,
+  accountCode: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    const raw = String(formData.get("balance") ?? "").trim();
+    const balance = raw === "" ? null : parseMoney(raw);
+    if (raw !== "" && balance === null) return { error: "סכום לא תקין" };
+    await setStatementBalance(org.id, uuid.parse(engagementId), accountCode, balance);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true };
+}
+
+export async function setVatConfigAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    await setVatConfig(org.id, uuid.parse(engagementId), {
+      revenueAccounts: formData.getAll("revenueAccounts").map(String),
+      outputVatAccounts: formData.getAll("outputVatAccounts").map(String),
+    });
   } catch (e) {
     return errorMessage(e);
   }

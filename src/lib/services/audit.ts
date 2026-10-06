@@ -2,7 +2,7 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { decodeBankFile } from "@/lib/domain/bank/parse";
+import { decodeBankFile, parseBankStatement, type BankRow } from "@/lib/domain/bank/parse";
 import { parseLedgerCsv } from "@/lib/domain/ledger/import-csv";
 import {
   crossCheckIni,
@@ -332,4 +332,104 @@ export async function redrawSample(organizationId: string, engagementId: string,
     entityId: engagement.id,
     data: { previousSeed: engagement.sampleSeed, seed, by: userId },
   });
+}
+
+const MAX_STATEMENT_ROWS = 200_000;
+
+/** קליטת דף בנק להתאמה מול חשבון בנק בספרים. קליטה חוזרת לאותו חשבון מחליפה את הדף */
+export async function importBankStatement(
+  organizationId: string,
+  engagementId: string,
+  accountCode: string,
+  file: { name: string; bytes: Uint8Array },
+) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  const db = await getDb();
+  const [account] = await db
+    .select({ code: schema.auditAccounts.code })
+    .from(schema.auditAccounts)
+    .where(
+      and(
+        eq(schema.auditAccounts.engagementId, engagement.id),
+        eq(schema.auditAccounts.period, "current"),
+        eq(schema.auditAccounts.code, accountCode),
+      ),
+    );
+  if (!account) throw new ValidationError("החשבון לא נמצא בספרים של התיק");
+  if (file.bytes.byteLength === 0) throw new ValidationError("הקובץ ריק");
+  if (file.bytes.byteLength > MAX_LEDGER_BYTES) throw new ValidationError("הקובץ גדול מדי");
+  const { rows } = parseBankStatement(decodeBankFile(file.bytes));
+  if (rows.length > MAX_STATEMENT_ROWS) throw new ValidationError("יותר מדי שורות בדף הבנק");
+
+  await db
+    .insert(schema.auditBankStatements)
+    .values({ engagementId: engagement.id, accountCode, filename: file.name.slice(0, 200), rows })
+    .onConflictDoUpdate({
+      target: [schema.auditBankStatements.engagementId, schema.auditBankStatements.accountCode],
+      set: { filename: file.name.slice(0, 200), rows, balanceOverride: null, importedAt: new Date() },
+    });
+  return { rows: rows.length };
+}
+
+export async function setStatementBalance(
+  organizationId: string,
+  engagementId: string,
+  accountCode: string,
+  balance: number | null,
+) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  const db = await getDb();
+  const updated = await db
+    .update(schema.auditBankStatements)
+    .set({ balanceOverride: balance })
+    .where(
+      and(
+        eq(schema.auditBankStatements.engagementId, engagement.id),
+        eq(schema.auditBankStatements.accountCode, accountCode),
+      ),
+    )
+    .returning({ id: schema.auditBankStatements.id });
+  if (updated.length === 0) throw new ValidationError("לא נקלט דף בנק לחשבון הזה");
+}
+
+export async function listBankStatements(organizationId: string, engagementId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) return [];
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(schema.auditBankStatements)
+    .where(eq(schema.auditBankStatements.engagementId, engagement.id))
+    .orderBy(asc(schema.auditBankStatements.accountCode));
+  return rows.map((r) => ({ ...r, rows: r.rows as BankRow[] }));
+}
+
+export interface VatConfig {
+  revenueAccounts: string[];
+  outputVatAccounts: string[];
+}
+
+export async function setVatConfig(organizationId: string, engagementId: string, config: VatConfig) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  if (config.revenueAccounts.length === 0 || config.outputVatAccounts.length === 0) {
+    throw new ValidationError("יש לבחור לפחות חשבון הכנסות אחד וחשבון מע״מ עסקאות אחד");
+  }
+  const db = await getDb();
+  const known = new Set(
+    (
+      await db
+        .select({ code: schema.auditAccounts.code })
+        .from(schema.auditAccounts)
+        .where(and(eq(schema.auditAccounts.engagementId, engagement.id), eq(schema.auditAccounts.period, "current")))
+    ).map((a) => a.code),
+  );
+  const all = [...config.revenueAccounts, ...config.outputVatAccounts];
+  if (all.some((c) => !known.has(c))) throw new ValidationError("נבחר חשבון שלא קיים בספרים של התיק");
+  if (config.revenueAccounts.some((c) => config.outputVatAccounts.includes(c))) {
+    throw new ValidationError("אותו חשבון לא יכול להיות גם הכנסות וגם מע״מ");
+  }
+  await db.update(schema.auditEngagements).set({ vatConfig: config }).where(eq(schema.auditEngagements.id, engagement.id));
 }

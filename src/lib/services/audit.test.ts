@@ -119,3 +119,38 @@ describe("audit engagements", () => {
     expect(await listEngagements(b.org.id)).toHaveLength(0);
   });
 });
+
+describe("reconciliations", async () => {
+  const { importBankStatement, listBankStatements, setStatementBalance, setVatConfig } = await import("./audit");
+  const STATEMENT = "תאריך,תיאור,סכום,יתרה\n05/03/2026,הפקדה,1180,1180.00";
+
+  it("stores a bank statement per ledger account and validates the account and balance", async () => {
+    const { user, org } = await firm("recon1@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2026 });
+    await importLedger(org.id, e.id, { name: "gl.csv", bytes: enc(LEDGER) });
+    await expect(importBankStatement(org.id, e.id, "9999", { name: "b.csv", bytes: enc(STATEMENT) })).rejects.toThrow(/לא נמצא/);
+    expect(await importBankStatement(org.id, e.id, "1000", { name: "b.csv", bytes: enc(STATEMENT) })).toEqual({ rows: 1 });
+    await setStatementBalance(org.id, e.id, "1000", 123400);
+    // קליטה חוזרת מחליפה את הדף ומאפסת את היתרה הידנית
+    await importBankStatement(org.id, e.id, "1000", { name: "b2.csv", bytes: enc(STATEMENT) });
+    const [s] = await listBankStatements(org.id, e.id);
+    expect(s).toMatchObject({ accountCode: "1000", filename: "b2.csv", balanceOverride: null });
+    expect(s.rows[0]).toMatchObject({ date: "2026-03-05", amount: 118000, balance: 118000 });
+    await expect(setStatementBalance(org.id, e.id, "4000", 1)).rejects.toThrow(/לא נקלט/);
+  });
+
+  it("validates the VAT account selection and keeps firms apart", async () => {
+    const a = await firm("recon2@example.com");
+    const b = await firm("recon3@example.com");
+    const e = await createEngagement(a.org.id, a.user.id, { clientName: "לקוח", fiscalYear: 2026 });
+    await importLedger(a.org.id, e.id, { name: "gl.csv", bytes: enc(LEDGER) });
+    await expect(setVatConfig(a.org.id, e.id, { revenueAccounts: [], outputVatAccounts: ["2200"] })).rejects.toThrow(/לפחות/);
+    await expect(setVatConfig(a.org.id, e.id, { revenueAccounts: ["4000"], outputVatAccounts: ["4000"] })).rejects.toThrow(/גם/);
+    await expect(setVatConfig(a.org.id, e.id, { revenueAccounts: ["4000"], outputVatAccounts: ["7777"] })).rejects.toThrow(/לא קיים/);
+    await setVatConfig(a.org.id, e.id, { revenueAccounts: ["4000"], outputVatAccounts: ["2200"] });
+    expect((await getEngagement(a.org.id, e.id))?.vatConfig).toEqual({ revenueAccounts: ["4000"], outputVatAccounts: ["2200"] });
+    await expect(setVatConfig(b.org.id, e.id, { revenueAccounts: ["4000"], outputVatAccounts: ["2200"] })).rejects.toThrow(/לא נמצא/);
+    await expect(importBankStatement(b.org.id, e.id, "1000", { name: "x.csv", bytes: enc(STATEMENT) })).rejects.toThrow(/לא נמצא/);
+    expect(await listBankStatements(b.org.id, e.id)).toEqual([]);
+  });
+});

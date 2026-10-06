@@ -304,6 +304,8 @@ export const auditEngagements = pgTable(
     importedAt: timestamp("imported_at", { withTimezone: true }),
     /** נתוני השנה הקודמת (להשוואה בסקירה האנליטית): קובץ, סוג, מועד ובעיות */
     priorSource: jsonb("prior_source"),
+    /** בחירת החשבונות לבדיקת סבירות המע"מ: { revenueAccounts, outputVatAccounts } */
+    vatConfig: jsonb("vat_config"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -363,4 +365,23 @@ export const auditNotes = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("audit_notes_engagement_item").on(t.engagementId, t.itemKey)],
+);
+
+/** דף בנק שנקלט לתיק לצורך התאמת בנק, לכל חשבון בנק בספרים */
+export const auditBankStatements = pgTable(
+  "audit_bank_statements",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    accountCode: text("account_code").notNull(),
+    filename: text("filename").notNull(),
+    /** שורות דף הבנק (תאריך, תיאור, סכום, יתרה, אסמכתא) */
+    rows: jsonb("rows").notNull(),
+    /** יתרת בנק ליום הסיום שהוזנה ידנית (גוברת על היתרה שבקובץ) */
+    balanceOverride: integer("balance_override"),
+    importedAt: createdAt(),
+  },
+  (t) => [uniqueIndex("audit_bank_statements_account").on(t.engagementId, t.accountCode)],
 );

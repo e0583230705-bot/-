@@ -8,14 +8,33 @@ import { benford, BENFORD_MIN_SAMPLE, CONFORMITY_LABELS } from "@/lib/domain/led
 import { computeMateriality, MATERIALITY_BASES, type MaterialityBasis } from "@/lib/domain/ledger/materiality";
 import { monetaryUnitSample } from "@/lib/domain/ledger/sampling";
 import { formatDate, formatILS } from "@/lib/format";
-import { LedgerImportForm, MaterialityForm, NoteForm } from "@/components/audit-forms";
-import { importLedgerAction, redrawSampleAction, saveNoteAction, setMaterialityAction } from "../../../actions";
+import {
+  BankStatementForm,
+  LedgerImportForm,
+  MaterialityForm,
+  NoteForm,
+  StatementBalanceForm,
+  VatConfigForm,
+} from "@/components/audit-forms";
+import {
+  importBankStatementAction,
+  importLedgerAction,
+  redrawSampleAction,
+  saveNoteAction,
+  setMaterialityAction,
+  setStatementBalanceAction,
+  setVatConfigAction,
+} from "../../../actions";
+import { reconcileBank, statementBalanceAt } from "@/lib/domain/ledger/bank-reconciliation";
+import { suggestVatAccounts, vatReasonableness } from "@/lib/domain/ledger/vat-reconciliation";
+import { listBankStatements, type VatConfig } from "@/lib/services/audit";
 import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
 import { listNotes } from "@/lib/services/audit";
 
 const TABS = [
   { key: "tb", label: "מאזן בוחן" },
   { key: "analytics", label: "סקירה אנליטית" },
+  { key: "recon", label: "התאמות" },
   { key: "je", label: "פקודות חריגות" },
   { key: "benford", label: "חוק בנפורד" },
   { key: "sample", label: "מדגם" },
@@ -121,6 +140,15 @@ export default async function EngagementPage({ params, searchParams }: PageProps
               by={sp.by === "group" ? "group" : "account"}
               write={write}
               notes={await listNotes(org.id, e.id)}
+            />
+          )}
+          {tab === "recon" && (
+            <ReconTab
+              data={data}
+              statements={await listBankStatements(org.id, e.id)}
+              notes={await listNotes(org.id, e.id)}
+              tolerance={materiality?.trivial ?? 1000_00}
+              write={write}
             />
           )}
           {tab === "je" && (
@@ -584,5 +612,214 @@ function AnalyticsTab({
         )}
       </div>
     </div>
+  );
+}
+
+function ReconTab({
+  data,
+  statements,
+  notes,
+  tolerance,
+  write,
+}: {
+  data: Data;
+  statements: Awaited<ReturnType<typeof listBankStatements>>;
+  notes: Awaited<ReturnType<typeof listNotes>>;
+  tolerance: number;
+  write: boolean;
+}) {
+  const e = data.engagement;
+  const from = `${e.fiscalYear}-01-01`;
+  const accountOptions = data.accounts.map((a) => ({ code: a.code, name: a.name }));
+  const bankLike = data.accounts.find((a) => /בנק/.test(a.name))?.code;
+  const noteProps = (key: string) => {
+    const n = notes.get(key);
+    return {
+      initial: n?.text,
+      meta: n ? `${n.author ?? ""} · ${n.updatedAt.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" })}` : undefined,
+    };
+  };
+  const vatConfig = e.vatConfig as VatConfig | null;
+  const suggested = suggestVatAccounts(data.accounts);
+  const vatMonths = vatConfig
+    ? vatReasonableness(data.lines, { ...vatConfig, tolerance, from, to: e.yearEnd })
+    : [];
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">התאמת בנק</h2>
+        {write && (
+          <div className="card space-y-2">
+            <p className="text-xs text-muted">
+              בחרו את חשבון הבנק בספרים והעלו את דף הבנק של אותו חשבון (CSV מאתר הבנק). מומלץ לכלול גם את חודש
+              ינואר של השנה הבאה, כדי לזהות צ׳קים והפקדות שנפרעו אחרי סוף השנה.
+            </p>
+            <BankStatementForm action={importBankStatementAction.bind(null, e.id)} accounts={accountOptions} defaultAccount={bankLike} />
+          </div>
+        )}
+        {statements.length === 0 && <p className="text-sm text-muted">עדיין לא נקלטו דפי בנק.</p>}
+        {statements.map((st) => {
+          const account = data.accounts.find((a) => a.code === st.accountCode);
+          const fileBalance = statementBalanceAt(st.rows, e.yearEnd);
+          const bankBalance = st.balanceOverride ?? fileBalance;
+          const r = reconcileBank(
+            data.lines.filter((l) => l.accountCode === st.accountCode),
+            st.rows,
+            { from, to: e.yearEnd, openingBookBalance: account?.openingBalance ?? 0, bankBalance },
+          );
+          const ok = r.unexplained === 0;
+          const key = `bankrec:${st.accountCode}`;
+          return (
+            <div key={st.id} className="card space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-bold">
+                  <span className="num">{st.accountCode}</span> · {account?.name}
+                </h3>
+                <span className="text-xs text-muted">
+                  דף בנק: <span className="num">{st.filename}</span> · {st.rows.length.toLocaleString("he-IL")} תנועות
+                </span>
+              </div>
+              <table className="table max-w-xl">
+                <tbody>
+                  <tr>
+                    <td>יתרה בבנק ב־{formatDate(e.yearEnd)}</td>
+                    <td className="num text-end">{bankBalance === null ? "לא ידועה" : formatILS(bankBalance)}</td>
+                  </tr>
+                  <tr>
+                    <td>+ רשום בספרים ועוד לא בבנק ({r.bookOnly.length + r.clearedAfterYearEnd.length})</td>
+                    <td className="num text-end">{formatILS(r.inBooksNotBankTotal)}</td>
+                  </tr>
+                  <tr>
+                    <td>− בבנק ולא רשום בספרים ({r.bankOnly.length})</td>
+                    <td className="num text-end">{formatILS(r.bankOnlyTotal)}</td>
+                  </tr>
+                  <tr className="font-bold">
+                    <td>יתרה בספרים</td>
+                    <td className="num text-end">{formatILS(r.bookBalance)}</td>
+                  </tr>
+                  <tr className={ok ? "text-brand" : "text-danger"}>
+                    <td className="font-bold">הפרש לא מוסבר</td>
+                    <td className="num text-end font-bold">
+                      {r.unexplained === null ? "—" : ok ? "0 ✓ מותאם" : formatILS(r.unexplained)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              {bankBalance === null && (
+                <p className="text-xs text-warn">בדף הבנק אין עמודת יתרה — הזינו את היתרה לפי אישור היתרה מהבנק.</p>
+              )}
+              {write && (
+                <StatementBalanceForm action={setStatementBalanceAction.bind(null, e.id, st.accountCode)} initial={st.balanceOverride} />
+              )}
+              <ReconList
+                title="נפרעו בבנק רק אחרי סוף השנה (ראיה לפריט פתוח)"
+                rows={r.clearedAfterYearEnd.map((m) => ({
+                  date: m.book.date,
+                  text: `${m.book.description || "—"} · נפרע ב־${formatDate(m.bank.date)}`,
+                  amount: m.book.amount,
+                }))}
+              />
+              <ReconList
+                title="רשום בספרים ולא נמצא בבנק — לבדוק"
+                rows={r.bookOnly.map((l) => ({ date: l.date, text: l.description || "—", amount: l.amount }))}
+                danger
+              />
+              <ReconList
+                title="בבנק ולא נרשם בספרים — לבדוק (עמלות, ריבית, תקבולים שלא נרשמו)"
+                rows={r.bankOnly.map((b) => ({ date: b.date, text: b.description, amount: b.amount }))}
+                danger
+              />
+              <p className="text-xs text-muted">
+                הותאמו {r.matched.length.toLocaleString("he-IL")} תנועות (סכום זהה, עד 7 ימים הפרש).
+              </p>
+              {write ? <NoteForm action={saveNoteAction.bind(null, e.id, key)} {...noteProps(key)} /> : null}
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">סבירות מע״מ עסקאות</h2>
+        <p className="text-sm text-muted">
+          לכל חודש: ההכנסות בספרים כפול שיעור המע״מ באותו חודש, מול המע״מ שנרשם. פער מעל{" "}
+          <span className="num">{formatILS(tolerance)}</span> מסומן — הכנסה בלי מע״מ, מע״מ שלא נרשם, או הכנסות פטורות /
+          יצוא שצריך לתעד.
+        </p>
+        {write && (
+          <div className="card">
+            <VatConfigForm
+              action={setVatConfigAction.bind(null, e.id)}
+              accounts={accountOptions}
+              revenue={vatConfig?.revenueAccounts ?? suggested.revenue}
+              outputVat={vatConfig?.outputVatAccounts ?? suggested.outputVat}
+            />
+          </div>
+        )}
+        {vatConfig && (
+          <div className="card overflow-x-auto p-0">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>חודש</th>
+                  <th className="text-end">הכנסות</th>
+                  <th className="text-end">מע״מ צפוי</th>
+                  <th className="text-end">מע״מ שנרשם</th>
+                  <th className="text-end">פער</th>
+                  <th className="min-w-64">הסבר</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vatMonths.map((m) => (
+                  <tr key={m.month} className={m.flagged ? "" : "text-muted"}>
+                    <td className="num">
+                      {m.month.split("-").reverse().join("/")} <span className="text-xs">({m.rate}%)</span>
+                    </td>
+                    <td className="num text-end">{formatILS(m.revenue)}</td>
+                    <td className="num text-end">{formatILS(m.expectedVat)}</td>
+                    <td className="num text-end">{formatILS(m.recordedVat)}</td>
+                    <td className={`num text-end ${m.flagged ? "font-bold text-danger" : ""}`}>{formatILS(m.difference)}</td>
+                    <td>
+                      {m.flagged && write && <NoteForm action={saveNoteAction.bind(null, e.id, `vat:${m.month}`)} {...noteProps(`vat:${m.month}`)} />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ReconList({
+  title,
+  rows,
+  danger,
+}: {
+  title: string;
+  rows: { date: string; text: string; amount: number }[];
+  danger?: boolean;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <details className="rounded-lg border border-border p-3" open={danger && rows.length <= 10}>
+      <summary className={`cursor-pointer text-sm font-medium ${danger ? "text-danger" : ""}`}>
+        {title} · {rows.length}
+      </summary>
+      <table className="table mt-2">
+        <tbody>
+          {rows.slice(0, 100).map((r, i) => (
+            <tr key={i}>
+              <td className="num whitespace-nowrap">{formatDate(r.date)}</td>
+              <td>{r.text}</td>
+              <td className="num text-end">{formatILS(r.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > 100 && <p className="text-xs text-muted">מוצגות 100 הראשונות מתוך {rows.length}.</p>}
+    </details>
   );
 }
