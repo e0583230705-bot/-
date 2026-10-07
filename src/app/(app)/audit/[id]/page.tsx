@@ -29,7 +29,9 @@ import { reconcileBank, statementBalanceAt } from "@/lib/domain/ledger/bank-reco
 import { suggestVatAccounts, vatReasonableness } from "@/lib/domain/ledger/vat-reconciliation";
 import { listBankStatements, type VatConfig } from "@/lib/services/audit";
 import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
-import { listNotes } from "@/lib/services/audit";
+import { listNotes, loadPayroll } from "@/lib/services/audit";
+import { PayrollTab, payrollStatus } from "./payroll-tab";
+import type { PayrollAccountMap } from "@/lib/domain/payroll/ledger-reconciliation";
 import { PageHeader } from "@/components/page-header";
 import { Icons } from "@/components/icons";
 
@@ -40,6 +42,7 @@ const TABS = [
   { key: "recon", label: "התאמות", icon: "bank", tone: "bg-teal-soft text-teal", blurb: "בנק ליום המאזן וסבירות מע״מ" },
   { key: "benford", label: "חוק בנפורד", icon: "percent", tone: "bg-pink-soft text-pink", blurb: "התפלגות הספרה הראשונה" },
   { key: "sample", label: "מדגם", icon: "inbox", tone: "bg-amber-soft text-amber", blurb: "פקודות לבדיקה מול אסמכתאות" },
+  { key: "payroll", label: "שכר", icon: "users", tone: "bg-brand-soft text-brand", blurb: "קובץ 126: עובדים, 102 חודשי, והתאמה לספרים" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -56,7 +59,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
 
   const materiality =
     e.materialityBase && e.materialityPct ? computeMateriality(e.materialityBase, e.materialityPct) : null;
-  const [notes, statements] = await Promise.all([listNotes(org.id, e.id), listBankStatements(org.id, e.id)]);
+  const [notes, statements, payroll] = await Promise.all([listNotes(org.id, e.id), listBankStatements(org.id, e.id), loadPayroll(org.id, e.id)]);
 
   // שורת סטטוס קצרה לכל בדיקה, לאריחים בסקירה
   const status: Record<TabKey, { text: string; tone: "good" | "warn" | "bad" | "muted" }> = {
@@ -66,6 +69,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
     recon: { text: "", tone: "muted" },
     benford: { text: "", tone: "muted" },
     sample: { text: "", tone: "muted" },
+    payroll: payrollStatus(payroll?.file ?? null),
   };
   if (hasBooks) {
     const tb = trialBalance(accounts, lines);
@@ -206,9 +210,9 @@ export default async function EngagementPage({ params, searchParams }: PageProps
                 return (
                   <Link
                     key={t.key}
-                    href={hasBooks ? `/audit/${e.id}?tab=${t.key}` : `/audit/${e.id}`}
-                    aria-disabled={!hasBooks}
-                    className={`tile ${hasBooks ? "" : "pointer-events-none opacity-50"}`}
+                    href={hasBooks || t.key === "payroll" ? `/audit/${e.id}?tab=${t.key}` : `/audit/${e.id}`}
+                    aria-disabled={!hasBooks && t.key !== "payroll"}
+                    className={`tile ${hasBooks || t.key === "payroll" ? "" : "pointer-events-none opacity-50"}`}
                   >
                     <span className={`bubble ${t.tone}`}>
                       <Icon size={22} />
@@ -228,7 +232,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
         </>
       )}
 
-      {tab !== null && hasBooks && (
+      {tab !== null && (hasBooks || tab === "payroll") && (
         <>
           <nav className="pills w-fit max-w-full overflow-x-auto" aria-label="חלקי התיק">
             {TABS.map((t) => (
@@ -254,6 +258,20 @@ export default async function EngagementPage({ params, searchParams }: PageProps
             <JournalTab lines={lines} yearEnd={e.yearEnd} performance={materiality?.performance ?? Number.MAX_SAFE_INTEGER} />
           )}
           {tab === "benford" && <BenfordTab lines={lines} />}
+          {tab === "payroll" && (
+            <PayrollTab
+              engagementId={e.id}
+              fiscalYear={e.fiscalYear}
+              payroll={payroll?.file ?? null}
+              filename={payroll?.filename ?? null}
+              accounts={accounts}
+              lines={lines}
+              mapping={(e.payrollConfig as PayrollAccountMap | null) ?? null}
+              tolerance={materiality?.trivial ?? 1000_00}
+              notes={notes}
+              write={write}
+            />
+          )}
           {tab === "sample" && (
             <SampleTab
               lines={lines}

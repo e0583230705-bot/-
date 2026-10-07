@@ -550,3 +550,37 @@ export async function setVatConfigAction(engagementId: string, _: FormState, for
   revalidatePath(`/audit/${engagementId}`);
   return { ok: true };
 }
+
+export async function importPayrollAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  let message: string;
+  try {
+    const { org } = await requirePermission("write_books");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { error: "יש לבחור קובץ 126" };
+    const { importPayroll } = await import("@/lib/services/audit");
+    const r = await importPayroll(org.id, uuid.parse(engagementId), { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+    message =
+      `נקלטו ${r.employees.toLocaleString("he-IL")} עובדים ו־${r.months} חודשי דיווח` +
+      (r.issues.length ? ` · נמצאו ${r.issues.length} בעיות בקובץ` : "");
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true, message };
+}
+
+export async function setPayrollConfigAction(engagementId: string, _: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { org } = await requirePermission("write_books");
+    const { setPayrollConfig } = await import("@/lib/services/audit");
+    const { PAYROLL_GROUPS } = await import("@/lib/domain/payroll/ledger-reconciliation");
+    const mapping = Object.fromEntries(
+      Object.keys(PAYROLL_GROUPS).map((g) => [g, formData.getAll(g).map(String).filter(Boolean)]),
+    ) as Parameters<typeof setPayrollConfig>[2];
+    await setPayrollConfig(org.id, uuid.parse(engagementId), mapping);
+  } catch (e) {
+    return errorMessage(e);
+  }
+  revalidatePath(`/audit/${engagementId}`);
+  return { ok: true };
+}

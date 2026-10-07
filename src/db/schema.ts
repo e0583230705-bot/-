@@ -306,6 +306,8 @@ export const auditEngagements = pgTable(
     priorSource: jsonb("prior_source"),
     /** בחירת החשבונות לבדיקת סבירות המע"מ: { revenueAccounts, outputVatAccounts } */
     vatConfig: jsonb("vat_config"),
+    /** מיפוי חשבונות השכר בספרים לקבוצות (הוצאות שכר, ב"ל מעביד, מוסדות…) להתאמת שכר ↔ ספרים */
+    payrollConfig: jsonb("payroll_config"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -384,4 +386,24 @@ export const auditBankStatements = pgTable(
     importedAt: createdAt(),
   },
   (t) => [uniqueIndex("audit_bank_statements_account").on(t.engagementId, t.accountCode)],
+);
+
+/** נתוני השכר של הלקוח המבוקר לשנת הדוח, מקובץ 126 (ובעתיד גם מריכוז שכר): עובדים, חודשים, סיכומים ובעיות בקובץ */
+export const auditPayroll = pgTable(
+  "audit_payroll",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    sourceType: text("source_type").notNull().default("form126"),
+    employer: jsonb("employer").notNull(),
+    employees: jsonb("employees").notNull(),
+    months: jsonb("months").notNull(),
+    declared: jsonb("declared").notNull(),
+    issues: jsonb("issues").notNull(),
+    importedAt: createdAt(),
+  },
+  (t) => [uniqueIndex("audit_payroll_engagement").on(t.engagementId)],
 );

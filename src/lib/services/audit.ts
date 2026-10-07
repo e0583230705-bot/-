@@ -16,6 +16,8 @@ import { MATERIALITY_BASES, type MaterialityBasis } from "@/lib/domain/ledger/ma
 import type { LedgerAccount, LedgerLine } from "@/lib/domain/ledger/types";
 import { isValidIsraeliId } from "@/lib/domain/israeli-id";
 import { ValidationError } from "./organizations";
+import type { PayrollFile } from "@/lib/domain/payroll/types";
+import type { PayrollAccountMap } from "@/lib/domain/payroll/ledger-reconciliation";
 
 export const MAX_LEDGER_BYTES = 30 * 1024 * 1024;
 
@@ -432,4 +434,97 @@ export async function setVatConfig(organizationId: string, engagementId: string,
     throw new ValidationError("אותו חשבון לא יכול להיות גם הכנסות וגם מע״מ");
   }
   await db.update(schema.auditEngagements).set({ vatConfig: config }).where(eq(schema.auditEngagements.id, engagement.id));
+}
+
+// ---------- שכר (קובץ 126) ----------
+
+const MAX_PAYROLL_BYTES = 30 * 1024 * 1024;
+
+/** קליטת קובץ 126 של הלקוח המבוקר לתיק. קליטה חוזרת מחליפה את הקודמת */
+export async function importPayroll(organizationId: string, engagementId: string, file: { name: string; bytes: Uint8Array }) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  if (file.bytes.byteLength === 0) throw new ValidationError("הקובץ ריק");
+  if (file.bytes.byteLength > MAX_PAYROLL_BYTES) throw new ValidationError("הקובץ גדול מדי (עד 30MB)");
+  const { isForm126, parseForm126, Form126Error } = await import("@/lib/domain/payroll/form126");
+  if (!isForm126(file.bytes)) {
+    throw new ValidationError("זה לא קובץ 126: מצפים לקובץ טקסט ברשומות באורך 966 תווים שמתחיל ברשומה מובילה מסוג 10");
+  }
+  let parsed: PayrollFile;
+  try {
+    parsed = parseForm126(file.bytes);
+  } catch (e) {
+    if (e instanceof Form126Error) throw new ValidationError(e.message);
+    throw e;
+  }
+  const issues = [...parsed.issues];
+  if (parsed.employer.taxYear !== engagement.fiscalYear) {
+    issues.unshift({ severity: "error", message: `הקובץ הוא לשנת המס ${parsed.employer.taxYear} ואילו התיק הוא לשנת ${engagement.fiscalYear}` });
+  }
+  const db = await getDb();
+  await db
+    .insert(schema.auditPayroll)
+    .values({
+      engagementId: engagement.id,
+      filename: file.name,
+      sourceType: "form126",
+      employer: parsed.employer,
+      employees: parsed.employees,
+      months: parsed.months,
+      declared: parsed.declared,
+      issues,
+    })
+    .onConflictDoUpdate({
+      target: schema.auditPayroll.engagementId,
+      set: {
+        filename: file.name,
+        employer: parsed.employer,
+        employees: parsed.employees,
+        months: parsed.months,
+        declared: parsed.declared,
+        issues,
+        importedAt: new Date(),
+      },
+    });
+  return { employees: parsed.employees.length, months: parsed.months.length, issues };
+}
+
+export async function loadPayroll(organizationId: string, engagementId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) return null;
+  const db = await getDb();
+  const [row] = await db.select().from(schema.auditPayroll).where(eq(schema.auditPayroll.engagementId, engagement.id));
+  if (!row) return null;
+  const file: PayrollFile = {
+    employer: row.employer as PayrollFile["employer"],
+    employees: row.employees as PayrollFile["employees"],
+    months: row.months as PayrollFile["months"],
+    declared: row.declared as PayrollFile["declared"],
+    issues: row.issues as PayrollFile["issues"],
+  };
+  return { file, filename: row.filename, importedAt: row.importedAt };
+}
+
+/** מיפוי חשבונות השכר בספרים. כל קבוצה — רשימת קודי חשבון; חשבון יכול להופיע בקבוצה אחת בלבד */
+export async function setPayrollConfig(organizationId: string, engagementId: string, mapping: PayrollAccountMap) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  const db = await getDb();
+  const known = new Set(
+    (
+      await db
+        .select({ code: schema.auditAccounts.code })
+        .from(schema.auditAccounts)
+        .where(and(eq(schema.auditAccounts.engagementId, engagement.id), eq(schema.auditAccounts.period, "current")))
+    ).map((a) => a.code),
+  );
+  const seen = new Set<string>();
+  for (const codes of Object.values(mapping)) {
+    for (const c of codes) {
+      if (!known.has(c)) throw new ValidationError("נבחר חשבון שלא קיים בספרים של התיק");
+      if (seen.has(c)) throw new ValidationError("אותו חשבון נבחר ליותר מקבוצה אחת");
+      seen.add(c);
+    }
+  }
+  await db.update(schema.auditEngagements).set({ payrollConfig: mapping }).where(eq(schema.auditEngagements.id, engagement.id));
 }

@@ -154,3 +154,41 @@ describe("reconciliations", async () => {
     expect(await listBankStatements(b.org.id, e.id)).toEqual([]);
   });
 });
+
+describe("payroll (form 126)", async () => {
+  const { importPayroll, loadPayroll, setPayrollConfig } = await import("./audit");
+  const { buildForm126 } = await import("@/test/form126-fixture");
+
+  it("imports a 126 file, flags a wrong year, re-imports, and keeps firms apart", async () => {
+    const { user, org } = await firm("payroll1@example.com");
+    const other = await firm("payroll2@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2025 });
+    await expect(importPayroll(org.id, e.id, { name: "x.txt", bytes: enc("not a 126 file") })).rejects.toThrow(/126/);
+    const r = await importPayroll(org.id, e.id, { name: "126.txt", bytes: buildForm126() });
+    expect(r.employees).toBe(3);
+    expect(r.months).toBe(12);
+    const loaded = await loadPayroll(org.id, e.id);
+    expect(loaded?.file.employees).toHaveLength(3);
+    expect(loaded?.filename).toBe("126.txt");
+    // קליטה חוזרת מחליפה
+    await importPayroll(org.id, e.id, { name: "126b.txt", bytes: buildForm126() });
+    expect((await loadPayroll(org.id, e.id))?.filename).toBe("126b.txt");
+    // שנה לא נכונה
+    const wrongYear = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2024 });
+    const w = await importPayroll(org.id, wrongYear.id, { name: "126.txt", bytes: buildForm126() });
+    expect(w.issues[0].message).toMatch(/לשנת המס 2025/);
+    expect(await loadPayroll(other.org.id, e.id)).toBeNull();
+    await expect(importPayroll(other.org.id, e.id, { name: "126.txt", bytes: buildForm126() })).rejects.toThrow(/לא נמצא/);
+  });
+
+  it("validates the account mapping", async () => {
+    const { user, org } = await firm("payroll3@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2026 });
+    await importLedger(org.id, e.id, { name: "gl.csv", bytes: enc(LEDGER) });
+    const empty = { salaryExpense: [], niEmployerExpense: [], socialExpense: [], incomeTaxPayable: [], niPayable: [], fundsPayable: [], netWagesPayable: [], vacationProvision: [], severanceLiability: [] };
+    await expect(setPayrollConfig(org.id, e.id, { ...empty, salaryExpense: ["9999"] })).rejects.toThrow(/לא קיים/);
+    await expect(setPayrollConfig(org.id, e.id, { ...empty, salaryExpense: ["4000"], socialExpense: ["4000"] })).rejects.toThrow(/יותר מקבוצה/);
+    await setPayrollConfig(org.id, e.id, { ...empty, salaryExpense: ["4000"] });
+    expect(((await getEngagement(org.id, e.id))?.payrollConfig as { salaryExpense: string[] }).salaryExpense).toEqual(["4000"]);
+  });
+});
