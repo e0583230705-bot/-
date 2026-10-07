@@ -12,18 +12,29 @@ import { PayrollImportForm, PayrollMappingForm } from "@/components/payroll-form
 import { Collapsible } from "@/components/page-header";
 import { Icons } from "@/components/icons";
 import { importPayrollAction, saveNoteAction, setPayrollConfigAction } from "@/app/actions";
+import { PayslipsSection, payslipsStatus, type PayslipsData } from "./payslips-section";
 
 type Notes = Map<string, { text: string; author: string | null; updatedAt: Date }>;
 
 /** סטטוס קצר לאריח בסקירת התיק */
-export function payrollStatus(payroll: PayrollFile | null): { text: string; tone: "good" | "warn" | "bad" | "muted" } {
-  if (!payroll) return { text: "אין קובץ 126", tone: "muted" };
-  const findings = runPayrollChecks(payroll);
-  const errors = findings.filter((f) => f.severity === "error").length + payroll.issues.filter((i) => i.severity === "error").length;
-  const warnings = findings.filter((f) => f.severity === "warning").length;
+export function payrollStatus(payroll: PayrollFile | null, payslips: PayslipsData | null, tolerance: number): { text: string; tone: "good" | "warn" | "bad" | "muted" } {
+  if (!payroll && !payslips) return { text: "אין קבצים", tone: "muted" };
+  let errors = 0;
+  let warnings = 0;
+  if (payroll) {
+    const findings = runPayrollChecks(payroll);
+    errors += findings.filter((f) => f.severity === "error").length + payroll.issues.filter((i) => i.severity === "error").length;
+    warnings += findings.filter((f) => f.severity === "warning").length;
+  }
+  const ps = payslipsStatus(payslips, payroll, tolerance);
+  if (ps) {
+    errors += ps.errors;
+    warnings += ps.warnings;
+  }
   if (errors > 0) return { text: `${errors} שגיאות`, tone: "bad" };
   if (warnings > 0) return { text: `${warnings} לבדיקה`, tone: "warn" };
-  return { text: `${payroll.employees.length} עובדים`, tone: "good" };
+  const parts = [payroll && `${payroll.employees.length} עובדים`, payslips && payslips.rows.length > 0 && `${payslips.rows.length} תלושים`].filter(Boolean);
+  return { text: parts.join(" · ") || "נקלט", tone: "good" };
 }
 
 export function PayrollTab({
@@ -31,6 +42,7 @@ export function PayrollTab({
   fiscalYear,
   payroll,
   filename,
+  payslips,
   accounts,
   lines,
   mapping,
@@ -42,6 +54,7 @@ export function PayrollTab({
   fiscalYear: number;
   payroll: PayrollFile | null;
   filename: string | null;
+  payslips: PayslipsData | null;
   accounts: LedgerAccount[];
   lines: LedgerLine[];
   mapping: PayrollAccountMap | null;
@@ -76,6 +89,7 @@ export function PayrollTab({
       )}
 
       {!payroll && !write && <p className="notice notice-info">עדיין לא נקלט קובץ 126 לתיק.</p>}
+      {!payroll && write && <p className="text-xs text-muted">אפשר להתחיל גם מריכוז השכר (למטה) ולהוסיף את קובץ 126 אחר כך.</p>}
 
       {payroll && (
         <>
@@ -97,6 +111,8 @@ export function PayrollTab({
           <Employees payroll={payroll} />
         </>
       )}
+
+      <PayslipsSection engagementId={engagementId} fiscalYear={fiscalYear} data={payslips} payroll={payroll} tolerance={tolerance} notes={notes} write={write} />
     </div>
   );
 }

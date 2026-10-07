@@ -192,3 +192,34 @@ describe("payroll (form 126)", async () => {
     expect(((await getEngagement(org.id, e.id))?.payrollConfig as { salaryExpense: string[] }).salaryExpense).toEqual(["4000"]);
   });
 });
+
+describe("payslips (ריכוז שכר)", async () => {
+  const { importPayslips, loadPayslips, setPayslipMapping } = await import("./audit");
+  const SLIPS = ["ת.ז.,שם,חודש,ברוטו,מס הכנסה,נטו", "123456782,דנה כהן,01/2025,10000,800,8500", "123456782,דנה כהן,02/2025,10000,800,8500"].join("\n");
+
+  it("imports, re-maps without re-upload, and validates the mapping", async () => {
+    const { user, org } = await firm("slips1@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2025 });
+    await expect(setPayslipMapping(org.id, e.id, { taxId: 0, month: 2, gross: 3, net: 5 })).rejects.toThrow(/לא נקלט/);
+    const r = await importPayslips(org.id, e.id, { name: "slips.csv", bytes: enc(SLIPS) });
+    expect(r).toMatchObject({ rows: 2, skipped: 0, totalRows: 2 });
+    const loaded = await loadPayslips(org.id, e.id);
+    expect(loaded?.rows.map((x) => x.month)).toEqual(["2025-01", "2025-02"]);
+    expect(loaded?.rows[0].incomeTax).toBe(800_00);
+    // מיפוי ידני: מוותרים על המס
+    await setPayslipMapping(org.id, e.id, { taxId: 0, name: 1, month: 2, gross: 3, net: 5 });
+    expect((await loadPayslips(org.id, e.id))?.rows[0].incomeTax).toBeNull();
+    await expect(setPayslipMapping(org.id, e.id, { taxId: 0, month: 0, gross: 3, net: 5 })).rejects.toThrow(/יותר משדה/);
+    await expect(setPayslipMapping(org.id, e.id, { taxId: 0, month: 2, gross: 3 })).rejects.toThrow(/חובה/);
+    await expect(setPayslipMapping(org.id, e.id, { taxId: 0, month: 2, gross: 3, net: 99 })).rejects.toThrow(/לא קיימת/);
+  });
+
+  it("keeps a file whose columns were not recognized, and asks for mapping", async () => {
+    const { user, org } = await firm("slips2@example.com");
+    const e = await createEngagement(org.id, user.id, { clientName: "לקוח", fiscalYear: 2025 });
+    const r = await importPayslips(org.id, e.id, { name: "odd.csv", bytes: enc("A,B,C,D\n1,2,3,4") });
+    expect(r.rows).toBe(0);
+    expect(r.issues[0].message).toMatch(/לא זוהו עמודות חובה/);
+    expect((await loadPayslips(org.id, e.id))?.rows).toEqual([]);
+  });
+});

@@ -18,6 +18,7 @@ import { isValidIsraeliId } from "@/lib/domain/israeli-id";
 import { ValidationError } from "./organizations";
 import type { PayrollFile } from "@/lib/domain/payroll/types";
 import type { PayrollAccountMap } from "@/lib/domain/payroll/ledger-reconciliation";
+import type { PayslipColumnMap, PayslipRow } from "@/lib/domain/payroll/payslips";
 
 export const MAX_LEDGER_BYTES = 30 * 1024 * 1024;
 
@@ -527,4 +528,97 @@ export async function setPayrollConfig(organizationId: string, engagementId: str
     }
   }
   await db.update(schema.auditEngagements).set({ payrollConfig: mapping }).where(eq(schema.auditEngagements.id, engagement.id));
+}
+
+// ---------- ריכוז שכר / תלושים (אקסל / CSV) ----------
+
+/** קליטת ריכוז שכר. הקובץ נשמר כטבלה גולמית + מיפוי אוטומטי; המיפוי ניתן לתיקון בלי העלאה מחדש */
+export async function importPayslips(organizationId: string, engagementId: string, file: { name: string; bytes: Uint8Array }) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  if (file.bytes.byteLength === 0) throw new ValidationError("הקובץ ריק");
+  if (file.bytes.byteLength > MAX_PAYROLL_BYTES) throw new ValidationError("הקובץ גדול מדי (עד 30MB)");
+  const { parsePayslipTable, autoMapColumns, applyPayslipMapping, missingRequiredFields, PayslipParseError, PAYSLIP_FIELDS } = await import(
+    "@/lib/domain/payroll/payslips"
+  );
+  let table;
+  try {
+    table = await parsePayslipTable(file.bytes, file.name);
+  } catch (e) {
+    if (e instanceof PayslipParseError) throw new ValidationError(e.message);
+    throw e;
+  }
+  if (table.rows.length > 50_000) throw new ValidationError("יותר מ־50,000 שורות — לפצל את הקובץ");
+  const mapping = autoMapColumns(table.headers);
+  const missing = missingRequiredFields(mapping);
+  // גם אם חסר מיפוי חובה — שומרים, כדי שרואה החשבון ישלים את המיפוי במסך
+  let parsedRows = 0;
+  let skipped = 0;
+  const issues: { severity: "error" | "warning"; message: string }[] = [];
+  if (missing.length === 0) {
+    try {
+      const r = applyPayslipMapping(table, mapping, engagement.fiscalYear);
+      parsedRows = r.rows.length;
+      skipped = r.skipped;
+      issues.push(...r.issues);
+    } catch (e) {
+      if (!(e instanceof PayslipParseError)) throw e;
+      issues.push({ severity: "error", message: e.message });
+    }
+  } else {
+    issues.push({ severity: "error", message: `לא זוהו עמודות חובה: ${missing.map((f) => PAYSLIP_FIELDS[f].label).join(", ")} — יש להשלים את המיפוי` });
+  }
+  const db = await getDb();
+  const values = { filename: file.name, sheet: table.sheet, headers: table.headers, rows: table.rows, mapping };
+  await db
+    .insert(schema.auditPayslips)
+    .values({ engagementId: engagement.id, ...values })
+    .onConflictDoUpdate({ target: schema.auditPayslips.engagementId, set: { ...values, importedAt: new Date() } });
+  return { rows: parsedRows, skipped, totalRows: table.rows.length, mapped: Object.keys(mapping).length, headers: table.headers.length, issues };
+}
+
+export async function loadPayslips(organizationId: string, engagementId: string) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) return null;
+  const db = await getDb();
+  const [row] = await db.select().from(schema.auditPayslips).where(eq(schema.auditPayslips.engagementId, engagement.id));
+  if (!row) return null;
+  const { applyPayslipMapping, missingRequiredFields, PayslipParseError } = await import("@/lib/domain/payroll/payslips");
+  const table = { headers: row.headers as string[], rows: row.rows as string[][], sheet: row.sheet };
+  const mapping = row.mapping as PayslipColumnMap;
+  let rows: PayslipRow[] = [];
+  let skipped = 0;
+  const issues: { severity: "error" | "warning"; message: string }[] = [];
+  if (missingRequiredFields(mapping).length === 0) {
+    try {
+      const r = applyPayslipMapping(table, mapping, engagement.fiscalYear);
+      rows = r.rows;
+      skipped = r.skipped;
+      issues.push(...r.issues);
+    } catch (e) {
+      if (!(e instanceof PayslipParseError)) throw e;
+      issues.push({ severity: "error", message: e.message });
+    }
+  }
+  return { table, mapping, rows, skipped, issues, filename: row.filename, importedAt: row.importedAt };
+}
+
+export async function setPayslipMapping(organizationId: string, engagementId: string, mapping: PayslipColumnMap) {
+  const engagement = await getEngagement(organizationId, engagementId);
+  if (!engagement) throw new ValidationError("תיק הביקורת לא נמצא");
+  const db = await getDb();
+  const [row] = await db.select({ headers: schema.auditPayslips.headers }).from(schema.auditPayslips).where(eq(schema.auditPayslips.engagementId, engagement.id));
+  if (!row) throw new ValidationError("עדיין לא נקלט ריכוז שכר לתיק");
+  const width = (row.headers as string[]).length;
+  const used = new Set<number>();
+  for (const [field, idx] of Object.entries(mapping)) {
+    if (idx === undefined) continue;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= width) throw new ValidationError(`עמודה לא קיימת עבור ${field}`);
+    if (used.has(idx)) throw new ValidationError("אותה עמודה מופתה ליותר משדה אחד");
+    used.add(idx);
+  }
+  const { missingRequiredFields, PAYSLIP_FIELDS } = await import("@/lib/domain/payroll/payslips");
+  const missing = missingRequiredFields(mapping);
+  if (missing.length) throw new ValidationError(`חסר מיפוי לעמודות חובה: ${missing.map((f) => PAYSLIP_FIELDS[f].label).join(", ")}`);
+  await db.update(schema.auditPayslips).set({ mapping }).where(eq(schema.auditPayslips.engagementId, engagement.id));
 }

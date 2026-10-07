@@ -407,3 +407,22 @@ export const auditPayroll = pgTable(
   },
   (t) => [uniqueIndex("audit_payroll_engagement").on(t.engagementId)],
 );
+
+/** ריכוז שכר / תלושים חודשיים (אקסל או CSV) כפי שנקלט: כותרות, שורות ומיפוי העמודות לשדות הקנוניים */
+export const auditPayslips = pgTable(
+  "audit_payslips",
+  {
+    id: id(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => auditEngagements.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    sheet: text("sheet"),
+    headers: jsonb("headers").notNull(),
+    rows: jsonb("rows").notNull(),
+    /** { field: columnIndex } — ניתן לתיקון בלי העלאה מחדש */
+    mapping: jsonb("mapping").notNull(),
+    importedAt: createdAt(),
+  },
+  (t) => [uniqueIndex("audit_payslips_engagement").on(t.engagementId)],
+);

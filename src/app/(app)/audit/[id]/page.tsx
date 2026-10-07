@@ -29,7 +29,7 @@ import { reconcileBank, statementBalanceAt } from "@/lib/domain/ledger/bank-reco
 import { suggestVatAccounts, vatReasonableness } from "@/lib/domain/ledger/vat-reconciliation";
 import { listBankStatements, type VatConfig } from "@/lib/services/audit";
 import { compareYears, monthlySpikes } from "@/lib/domain/ledger/analytics";
-import { listNotes, loadPayroll } from "@/lib/services/audit";
+import { listNotes, loadPayroll, loadPayslips } from "@/lib/services/audit";
 import { PayrollTab, payrollStatus } from "./payroll-tab";
 import type { PayrollAccountMap } from "@/lib/domain/payroll/ledger-reconciliation";
 import { PageHeader } from "@/components/page-header";
@@ -59,7 +59,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
 
   const materiality =
     e.materialityBase && e.materialityPct ? computeMateriality(e.materialityBase, e.materialityPct) : null;
-  const [notes, statements, payroll] = await Promise.all([listNotes(org.id, e.id), listBankStatements(org.id, e.id), loadPayroll(org.id, e.id)]);
+  const [notes, statements, payroll, payslips] = await Promise.all([listNotes(org.id, e.id), listBankStatements(org.id, e.id), loadPayroll(org.id, e.id), loadPayslips(org.id, e.id)]);
 
   // שורת סטטוס קצרה לכל בדיקה, לאריחים בסקירה
   const status: Record<TabKey, { text: string; tone: "good" | "warn" | "bad" | "muted" }> = {
@@ -69,7 +69,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
     recon: { text: "", tone: "muted" },
     benford: { text: "", tone: "muted" },
     sample: { text: "", tone: "muted" },
-    payroll: payrollStatus(payroll?.file ?? null),
+    payroll: payrollStatus(payroll?.file ?? null, payslips, materiality?.trivial ?? 1000_00),
   };
   if (hasBooks) {
     const tb = trialBalance(accounts, lines);
@@ -264,6 +264,7 @@ export default async function EngagementPage({ params, searchParams }: PageProps
               fiscalYear={e.fiscalYear}
               payroll={payroll?.file ?? null}
               filename={payroll?.filename ?? null}
+              payslips={payslips}
               accounts={accounts}
               lines={lines}
               mapping={(e.payrollConfig as PayrollAccountMap | null) ?? null}
