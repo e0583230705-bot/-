@@ -10,7 +10,10 @@ export async function GET() {
     await db.execute(sql`select 1`);
     return Response.json({ ok: true });
   } catch (err) {
-    const e = err as { code?: string; message?: string };
-    return Response.json({ ok: false, code: e.code ?? null, error: (e.message ?? String(err)).replace(/postgres(ql)?:\/\/\S+/g, "[url]") }, { status: 503 });
+    // Drizzle עוטף את שגיאת הדרייבר ב־cause — שם נמצא המידע המועיל
+    const e = err as { code?: string; message?: string; cause?: { code?: string; message?: string } };
+    const c = e.cause ?? e;
+    const clean = (m?: string) => (m ?? "").replace(/postgres(ql)?:\/\/\S+/g, "[url]");
+    return Response.json({ ok: false, code: c.code ?? e.code ?? null, error: clean(c.message) || clean(e.message) || String(err) }, { status: 503 });
   }
 }
