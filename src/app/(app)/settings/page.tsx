@@ -13,7 +13,7 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="משתמשים והרשאות"
+        title="המשרד והצוות"
       />
 
       <div className="table-wrap">

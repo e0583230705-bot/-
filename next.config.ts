@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@electric-sql/pglite", "playwright-core", "pg", "@netlify/database", "xlsx"],
+  serverExternalPackages: ["@electric-sql/pglite", "pg", "@netlify/database", "xlsx"],
   experimental: {
     serverActions: {
       // ברירת המחדל (1MB) קטנה מדי לצילומי קבלות ולקובצי מבנה אחיד.

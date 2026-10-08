@@ -5,7 +5,7 @@ export default function SignupPage() {
     <>
       <div className="card p-6">
         <h1 className="text-xl font-bold">יצירת חשבון</h1>
-        <p className="mb-5 text-sm text-muted">אחרי ההרשמה נקים יחד את העסק הראשון שלך</p>
+        <p className="mb-5 text-sm text-muted">אחרי ההרשמה נקים את המשרד שלך</p>
         <SignupForm />
       </div>
     </>

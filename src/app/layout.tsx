@@ -5,8 +5,8 @@ import "./globals.css";
 const heebo = Heebo({ variable: "--font-heebo", subsets: ["hebrew", "latin"] });
 
 export const metadata: Metadata = {
-  title: "הנהלת חשבונות חכמה",
-  description: "ניהול הכנסות, הוצאות, מע\"מ ומועדי דיווח לכל סוגי העסקים",
+  title: "ביקורת חכמה",
+  description: "כלי עבודה לביקורת דוחות כספיים: קליטת ספרים ושכר, בדיקות אוטומטיות ותיעוד ממצאים",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

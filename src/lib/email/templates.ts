@@ -1,4 +1,5 @@
-import { escapeHtml } from "@/lib/pdf/document-html";
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
 function layout(title: string, body: string) {
   return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head>
@@ -6,30 +7,6 @@ function layout(title: string, body: string) {
 <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e3e6eb;border-radius:12px;padding:24px;text-align:right">
 ${body}
 </div></body></html>`;
-}
-
-const paragraphs = (text: string) =>
-  text
-    .split(/\n{2,}/)
-    .map((p) => `<p style="line-height:1.6;margin:0 0 12px">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
-    .join("");
-
-export function documentEmail(params: {
-  businessName: string;
-  documentTitle: string;
-  customerName: string;
-  total: string;
-  message?: string;
-}) {
-  const message =
-    params.message?.trim() ||
-    `שלום ${params.customerName},\n\nמצורף ${params.documentTitle} על סך ${params.total}.\n\nתודה,\n${params.businessName}`;
-  const subject = `${params.documentTitle} מאת ${params.businessName}`;
-  return {
-    subject,
-    text: message,
-    html: layout(subject, `${paragraphs(message)}<p style="color:#5d6b7c;font-size:12px;margin-top:24px">המסמך מצורף כקובץ PDF.</p>`),
-  };
 }
 
 export function passwordResetEmail(params: { name: string; link: string }) {

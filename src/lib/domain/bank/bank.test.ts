@@ -9,7 +9,6 @@ import {
   parseBankStatement,
   parseCsv,
 } from "./parse";
-import { suggestMatches } from "./match";
 
 describe("bank parsing helpers", () => {
   it("parses amounts in bank formats", () => {
@@ -108,25 +107,5 @@ describe("parseBankStatement", () => {
     const [a, b] = fingerprints([row, row]);
     expect(a).not.toBe(b);
     expect(fingerprints([row])[0]).toBe(a);
-  });
-});
-
-describe("suggestMatches", () => {
-  it("matches credits to documents and debits to expenses", () => {
-    const s = suggestMatches(
-      [
-        { id: "t1", date: "2026-09-20", amount: 472000 },
-        { id: "t2", date: "2026-09-06", amount: -59000 },
-        { id: "t3", date: "2026-09-06", amount: -12345 },
-        { id: "t4", date: "2026-12-30", amount: 472000 },
-      ],
-      [{ id: "d1", issueDate: "2026-09-01", gross: 472000, label: "חשבונית 1" }],
-      [{ id: "e1", date: "2026-09-05", gross: 59000, label: "דלק" }],
-    );
-    expect(s.get("t1")).toEqual({ kind: "document", id: "d1", label: "חשבונית 1" });
-    expect(s.get("t2")).toEqual({ kind: "expense", id: "e1", label: "דלק" });
-    expect(s.has("t3")).toBe(false);
-    // אותו מסמך לא מוצע פעמיים
-    expect(s.has("t4")).toBe(false);
   });
 });

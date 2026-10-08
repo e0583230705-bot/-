@@ -1,5 +1,5 @@
 {
-  "name": "accounting-platform",
+  "name": "heshbon-audit",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,13 +12,11 @@
     "db:generate": "drizzle-kit generate && node scripts/sync-netlify-migrations.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
     "@electric-sql/pglite": "^0.5.8",
     "@netlify/database": "^2.0.1",
     "drizzle-orm": "^0.45.3",
     "next": "16.3.8",
     "pg": "^8.23.1",
-    "playwright-core": "^1.56.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",

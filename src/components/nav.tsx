@@ -17,15 +17,7 @@ export interface NavLink {
 /* ארבעה אזורים בלבד. כל מה שבפנים מגיע דרך לשוניות־משנה בתוך האזור. */
 export const NAV: NavLink[] = [
   { href: "/audit", label: "תיקי ביקורת", icon: "audit", tone: "bg-violet-soft text-violet" },
-  {
-    href: "/",
-    label: "העסק",
-    icon: "building",
-    tone: "bg-teal-soft text-teal",
-    also: ["/income", "/expenses", "/customers", "/bank"],
-  },
-  { href: "/reports", label: "דוחות", icon: "chart", tone: "bg-sky-soft text-sky", also: ["/vat", "/calendar"] },
-  { href: "/settings", label: "הגדרות", icon: "settings", tone: "bg-amber-soft text-amber" },
+  { href: "/settings", label: "המשרד והצוות", icon: "settings", tone: "bg-amber-soft text-amber" },
 ];
 
 export function isActive(pathname: string, l: { href: string; also?: string[] }) {
@@ -65,7 +57,7 @@ export function SideNav() {
 export function MobileNav() {
   const pathname = usePathname();
   return (
-    <nav className="grid grid-cols-4 gap-1" aria-label="ניווט ראשי">
+    <nav className="grid grid-cols-2 gap-1" aria-label="ניווט ראשי">
       {NAV.map((l) => {
         const active = isActive(pathname, l);
         const Icon = Icons[l.icon];

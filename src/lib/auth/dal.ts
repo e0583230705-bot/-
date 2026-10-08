@@ -43,7 +43,7 @@ export async function requireUser() {
   return session;
 }
 
-/** המשתמש, העסק הפעיל והתפקיד שלו בו. מפנה להתחברות / להקמת עסק לפי הצורך. */
+/** המשתמש, המשרד הפעיל והתפקיד שלו בו. מפנה להתחברות / להקמת משרד לפי הצורך. */
 export const getContext = cache(async () => {
   const session = await requireUser();
   const orgs = await listOrganizationsForUser(session.user.id);

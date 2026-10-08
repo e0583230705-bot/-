@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { EmailError, sendEmail } from "./send";
-import { documentEmail, passwordResetEmail } from "./templates";
+import { passwordResetEmail } from "./templates";
 
 const msg = { to: "customer@example.com", subject: "חשבונית", html: "<p>x</p>", text: "x" };
 
@@ -55,16 +55,9 @@ describe("sendEmail", () => {
 });
 
 describe("email templates", () => {
-  it("escapes user content", () => {
-    const e = documentEmail({
-      businessName: "<b>עסק</b>",
-      documentTitle: "חשבונית מס 0001",
-      customerName: "לקוח",
-      total: "₪100.00",
-      message: "שלום <script>x</script>",
-    });
-    expect(e.html).not.toContain("<script>");
-    expect(e.subject).toBe("חשבונית מס 0001 מאת <b>עסק</b>");
-    expect(passwordResetEmail({ name: "דנה", link: "https://x.test/r?token=a&b" }).html).toContain("token=a&amp;b");
+  it("builds a password reset email with the link", () => {
+    const m = passwordResetEmail({ name: "דנה", link: "https://x.test/reset?token=abc" });
+    expect(m.html).toContain("https://x.test/reset?token=abc");
+    expect(m.subject.length).toBeGreaterThan(0);
   });
 });

@@ -10,11 +10,11 @@ export default async function OnboardingPage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-8 flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-lg font-bold text-white">ח</span>
-        <p className="font-bold">הנהלת חשבונות חכמה</p>
+        <p className="font-bold">ביקורת חכמה</p>
       </div>
-      <h1 className="mb-1 text-2xl font-bold tracking-tight">{hasOrgs ? "הוספת עסק" : "נקים את העסק הראשון"}</h1>
+      <h1 className="mb-1 text-2xl font-bold tracking-tight">{hasOrgs ? "הוספת משרד" : "נקים את המשרד"}</h1>
       <p className="mb-6 text-muted">
-        סוג העסק קובע אילו מסמכים מותר להפיק, איך מחושב מע&quot;מ ואילו מועדי דיווח יופיעו בלוח.
+        כל תיקי הביקורת, הצוות וההרשאות שייכים למשרד. אפשר להקים כמה משרדים ולעבור ביניהם.
       </p>
       <div className="card">
         <OnboardingForm />

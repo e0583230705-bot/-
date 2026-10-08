@@ -1,17 +1,13 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { BUSINESS_TYPES, type BusinessType, type VatFrequency } from "@/lib/domain/business-types";
-import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/domain/expense-categories";
 import { isValidIsraeliId } from "@/lib/domain/israeli-id";
 
 export interface NewOrganization {
   /** המשתמש שפותח את העסק — הופך לבעלים */
   ownerUserId: string;
   name: string;
-  businessType: BusinessType;
   taxId: string;
-  vatFrequency?: VatFrequency;
   address?: string;
   phone?: string;
   email?: string;
@@ -20,29 +16,16 @@ export interface NewOrganization {
 export class ValidationError extends Error {}
 
 export async function createOrganization({ ownerUserId, ...input }: NewOrganization) {
-  const profile = BUSINESS_TYPES[input.businessType];
-  if (!profile) throw new ValidationError("סוג עסק לא מוכר");
-  if (!isValidIsraeliId(input.taxId)) throw new ValidationError("מספר עוסק / ח.פ. לא תקין");
-  const vatFrequency = profile.chargesVat
-    ? (input.vatFrequency ?? profile.defaultVatFrequency)
-    : "none";
+  if (!isValidIsraeliId(input.taxId)) throw new ValidationError("מספר ח.פ. / עוסק לא תקין");
 
   const db = await getDb();
   return db.transaction(async (tx) => {
     const [org] = await tx
       .insert(schema.organizations)
-      .values({ ...input, vatFrequency })
+      // המשרד נשמר כ"שותפות" עם דיווח מע"מ חודשי — שדות שהטבלה דורשת, ללא משמעות במערכת הביקורת
+      .values({ ...input, businessType: "partnership", vatFrequency: "monthly" })
       .returning();
     await tx.insert(schema.memberships).values({ organizationId: org.id, userId: ownerUserId, role: "owner" });
-    await tx.insert(schema.expenseCategories).values(
-      DEFAULT_EXPENSE_CATEGORIES.map((c) => ({
-        organizationId: org.id,
-        key: c.key,
-        label: c.label,
-        taxDeductiblePct: c.taxDeductiblePct,
-        vatDeductiblePct: c.vatDeductiblePct,
-      })),
-    );
     await tx.insert(schema.auditLog).values({
       organizationId: org.id,
       action: "create",
@@ -60,7 +43,3 @@ export async function getOrganization(id: string) {
   return org ?? null;
 }
 
-
-export function profileOf(org: { businessType: string }) {
-  return BUSINESS_TYPES[org.businessType as BusinessType];
-}

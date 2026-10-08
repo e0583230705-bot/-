@@ -16,7 +16,7 @@ import {
 
 async function firm(email: string) {
   const user = await registerUser({ email, name: "רו\"ח", password: "correct horse battery" });
-  const org = await createOrganization({ ownerUserId: user.id, name: "משרד רו\"ח", businessType: "partnership", taxId: "123456782" });
+  const org = await createOrganization({ ownerUserId: user.id, name: "משרד רו\"ח", taxId: "123456782" });
   return { user, org };
 }
 

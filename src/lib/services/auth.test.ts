@@ -79,7 +79,6 @@ describe("memberships", () => {
     const org = await createOrganization({
       ownerUserId: owner.id,
       name: "עסק",
-      businessType: "osek_murshe",
       taxId: "123456782",
     });
 
@@ -105,7 +104,7 @@ describe("memberships", () => {
 
   it("stores the active organization on the session", async () => {
     const u = await registerUser({ email: "active@example.com", name: "x", password: PASSWORD });
-    const org = await createOrganization({ ownerUserId: u.id, name: "a", businessType: "company", taxId: "123456782" });
+    const org = await createOrganization({ ownerUserId: u.id, name: "a", taxId: "123456782" });
     const { token } = await createSession(u.id);
     await setActiveOrganization(token, org.id);
     expect((await validateSession(token))?.session.activeOrganizationId).toBe(org.id);
