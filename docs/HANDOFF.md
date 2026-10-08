@@ -86,6 +86,10 @@
   אחרי המעבר לריפו החדש: לחבר את האתר ל־`heshbonai`, ענף `main`.
   מגבלות בשרת serverless: אין Chromium (PDF ושליחת מסמכים מחזירים הודעה מסודרת), בקשות עד 6MB.
 - העלאה ישירה דרך כלי ה־MCP של Netlify נכשלה ב־403 — לכן הדרך היא חיבור האתר ל־GitHub.
+- **8.10.2026 — מסד הנתונים עבר ל־Supabase** (פרויקט `bikoret`, ref `peckeubgovyhjlcuqfuq`; הפירוט ב־HANDOFF של ריפו `-24`).
+  ב־Netlify: `DATABASE_URL` (עם `?sslmode=verify-full`) + `DATABASE_MIGRATIONS=external`; `DATABASE_DRIVER=netlify` הוסר.
+  שימו לב: משתנה שנשמר דרך ה־MCP כ"סודי" לא נשמר בפועל — להגדיר רגיל. אחרי שינוי משתנה סביבה חובה פריסה מחדש.
+  בדיקת חיות: `/api/health`.
 
 ## סביבת עבודה
 
